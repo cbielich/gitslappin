@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.*
+!.env.example
+dist/
+test-results/
+playwright-report/
+*.log
+# Private build notes (local paths, reference sources)
+docs/specs/build-notes.md

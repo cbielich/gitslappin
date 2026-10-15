@@ -1,0 +1,23 @@
+{
+  "name": "gitslappin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["shared", "server", "client"],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build -w shared && npm run build -w client && npm run build -w server",
+    "start": "node scripts/start.mjs",
+    "install-shortcut": "node scripts/install-shortcut.mjs",
+    "test:unit": "vitest run",
+    "test:docker": "vitest run --config tests/docker/vitest.config.ts",
+    "test:e2e": "playwright test --reporter=line"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "latest",
+    "tsx": "latest",
+    "typescript": "~5.9.0",
+    "vitest": "latest"
+  }
+}

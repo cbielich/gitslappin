@@ -1,0 +1,316 @@
+/* Phase 3: diff viewer (replaces the graph in the centre panel while open). */
+.graph-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Hidden but still laid out, so the graph keeps its size and scroll position. */
+.graph-wrap.hidden {
+  visibility: hidden;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.rail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 14px;
+  color: var(--text-secondary);
+}
+
+.rail-count {
+  font-size: var(--fs-1);
+  color: var(--blue);
+}
+
+.diff-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--code-bg);
+}
+
+.diff-header {
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: var(--toolbar__bg0);
+  border-bottom: 1px solid var(--section-border);
+  font-size: var(--fs-3);
+}
+
+.diff-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-spacer {
+  flex: 1;
+}
+
+.diff-encoding {
+  font-size: var(--fs-1);
+  color: var(--text-secondary);
+}
+
+.diff-stage-slot:empty {
+  display: none;
+}
+
+.diff-toolbar {
+  height: 36px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--section-border);
+}
+
+.diff-toolbar-left,
+.diff-toolbar-right {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diff-toolbar-right {
+  justify-content: flex-end;
+}
+
+.diff-toolbar-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diff-badge {
+  padding: 2px 10px;
+  border: 1px solid var(--primary-border);
+  background: var(--primary-bg);
+  border-radius: 3px;
+  color: var(--text-selected);
+}
+
+.diff-group {
+  display: inline-flex;
+  border: 1px solid var(--section-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.diff-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  background: none;
+  border: 0;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.diff-tool + .diff-tool {
+  border-left: 1px solid var(--section-border);
+}
+
+.diff-tool:hover {
+  background: var(--glass-inverse-10);
+}
+
+.diff-tool.on {
+  background: var(--primary-bg);
+  color: var(--text-selected);
+}
+
+.diff-tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.diff-notice {
+  flex: none;
+  padding: 4px 12px;
+  color: var(--orange);
+}
+
+.diff-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.diff-message {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  color: var(--text-secondary);
+}
+
+.diff-message.error {
+  color: var(--red);
+}
+
+.diff-monaco {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.hunk-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 24px;
+  font-family: Monaco, Menlo, Consolas, monospace;
+  font-size: var(--fs-2);
+  line-height: 16px;
+}
+
+.hunk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  margin-top: 12px;
+  padding: 0 16px 0 60px;
+  color: var(--text-normal);
+  border-bottom: 1px solid var(--section-border);
+}
+
+.hunk-header {
+  white-space: pre;
+  color: var(--text-normal);
+}
+
+.hunk-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.diff-line {
+  display: flex;
+  min-width: 100%;
+  width: max-content;
+}
+
+.hunk-view.wrap .diff-line {
+  width: auto;
+}
+
+.line-plus-slot {
+  flex: none;
+  width: 14px;
+}
+
+.gutter {
+  flex: none;
+  width: 32px;
+  padding-right: 6px;
+  text-align: right;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.gutter-new::after {
+  display: inline-block;
+  width: 10px;
+  text-align: center;
+}
+
+.diff-line.add .gutter-new::after {
+  content: '+';
+  color: var(--green);
+}
+
+.diff-line.del .gutter-new::after {
+  content: '-';
+  color: var(--red);
+}
+
+.diff-line.context .gutter-new::after {
+  content: '';
+}
+
+.line-text {
+  flex: 1;
+  white-space: pre;
+  color: var(--code-foreground);
+}
+
+.hunk-view.wrap .line-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff-line.add {
+  background: var(--diff-add-bg);
+}
+
+.diff-line.del {
+  background: var(--diff-del-bg);
+}
+
+.diff-line.add .wd {
+  background: var(--diff-add-word);
+}
+
+.diff-line.del .wd {
+  background: var(--diff-del-word);
+}
+
+.line-noeol {
+  padding-left: 100px;
+  color: var(--text-disabled);
+  font-style: italic;
+}
+
+/*
+ * Syntax colours from Monaco token types. Class names come from the token type, never from file text.
+ * Values are Monaco's own vs-dark theme (GitKraken's code editor uses it; its theme files define no syntax colours).
+ */
+.tok-variable { color: var(--tok-variable); }
+.tok-variable-predefined { color: var(--tok-variable-predefined); }
+.tok-variable-parameter { color: var(--tok-variable-parameter); }
+.tok-constant { color: var(--tok-constant); }
+.tok-comment { color: var(--tok-comment); }
+.tok-number { color: var(--tok-number); }
+.tok-number-hex { color: var(--tok-number-hex); }
+.tok-regexp { color: var(--tok-regexp); }
+.tok-annotation { color: var(--tok-annotation); }
+.tok-type { color: var(--tok-type); }
+.tok-delimiter { color: var(--tok-delimiter); }
+.tok-delimiter-html,
+.tok-delimiter-xml { color: var(--tok-delimiter-xml); }
+.tok-tag { color: var(--tok-tag); }
+.tok-metatag { color: var(--tok-metatag); }
+.tok-key { color: var(--tok-key); }
+.tok-attribute-name { color: var(--tok-key); }
+.tok-attribute-value { color: var(--tok-attribute-value); }
+.tok-string { color: var(--tok-string); }
+.tok-string-key { color: var(--tok-key); }
+.tok-keyword { color: var(--tok-keyword); }
+.tok-keyword-flow { color: var(--tok-keyword-flow); }
+.tok-keyword-json { color: var(--tok-string); }
+.tok-invalid { color: var(--tok-invalid); }
+.tok-emphasis { font-style: italic; }
+.tok-strong { font-weight: bold; }
+
+[data-theme='light'] .diff-view {
+  background: var(--code-bg);
+}

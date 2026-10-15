@@ -1,0 +1,160 @@
+/* GitKraken Dark tokens (names/values from dark.jsonc-default; LESS functions pre-computed). */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --white: #ffffff;
+  --black: #000000;
+  --red: #d9413d;
+  --orange: #de9b43;
+  --yellow: #ecb91c;
+  --green: #5cb85c;
+  --teal: #2ece9d;
+  --blue: #4d88ff;
+  --ltblue: #5bc0de;
+  --purple: #c517b6;
+
+  --app__bg0: #1c1e23;
+  --toolbar__bg0: #282c35;
+  --toolbar__bg1: #313641;
+  --toolbar__bg2: #3e4452;
+  --panel__bg0: #272a31;
+  --panel__bg1: #33363f;
+  --panel__bg2: #3e424d;
+  --glass: #00000033;
+  --glass-inverse-10: #ffffff1a;
+  --glass-inverse-5: #ffffff0d;
+  --input__bg: rgba(0, 0, 0, 0.2);
+  --input-bg-warn-color: rgba(222, 155, 67, 0.6);
+  --panel-accent: #bc7eff;
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --section-border: rgba(255, 255, 255, 0.08);
+  --subtle-border: rgba(255, 255, 255, 0.04);
+  --modal-overlay-color: rgba(0, 0, 0, 0.5);
+
+  --graph-color-0: #15a0bf;
+  --graph-color-1: #0669f7;
+  --graph-color-2: #8e00c2;
+  --graph-color-3: #c517b6;
+  --graph-color-4: #d90171;
+  --graph-color-5: #cd0101;
+  --graph-color-6: #f25d2e;
+  --graph-color-7: #f2ca33;
+  --graph-color-8: #7bd938;
+  --graph-color-9: #2ece9d;
+  --stats-added-color: #347d39;
+  --stats-deleted-color: #c93c37;
+  --stats-files-color: #e2c08d;
+
+  --text-selected: #ffffff;
+  --text-normal: rgba(255, 255, 255, 0.75);
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-disabled: rgba(255, 255, 255, 0.4);
+  --text-accent: #93a9ec;
+  --text-inverse: #222222;
+  --text-bright: #ffffff;
+  --text-dimmed: rgba(255, 255, 255, 0.15);
+  --text-dimmed-selected: rgba(255, 255, 255, 0.075);
+  --text-selected-row: #ffffff;
+
+  --gkftux-blue: #6eb5ff;
+  --gkftux-repo-tab-border: #36393f;
+  --gkftux-repo-tab-border-selected: #6eb5ff;
+  --gkftux-repo-tab-bg: transparent;
+  --gkftux-repo-tab-bg-selected: #1c1e23;
+  --gkftux-repo-tab-icon: rgba(110, 181, 255, 0.5);
+  --gkftux-repo-tab-icon-selected: #6eb5ff;
+
+  --btn-text: var(--text-normal);
+  --btn-text-hover: var(--text-selected);
+  --default-border: var(--text-normal);
+  --default-bg: transparent;
+  --default-border-hover: var(--text-selected);
+  --primary-border: #4d88ff;
+  --primary-bg: rgba(77, 136, 255, 0.2);
+  --primary-hover: rgba(77, 136, 255, 0.6);
+  --success-border: #5cb85c;
+  --success-bg: rgba(92, 184, 92, 0.2);
+  --success-hover: rgba(92, 184, 92, 0.6);
+  --warning-border: #de9b43;
+  --warning-bg: rgba(222, 155, 67, 0.2);
+  --warning-hover: rgba(222, 155, 67, 0.6);
+  --danger-border: #d9413d;
+  --danger-bg: rgba(217, 65, 61, 0.2);
+  --danger-hover: rgba(217, 65, 61, 0.6);
+  --hover-row: rgba(77, 136, 255, 0.1);
+  --danger-row: rgba(217, 65, 61, 0.6);
+  --selected-row: rgba(77, 136, 255, 0.2);
+  --warning-row: rgba(222, 155, 67, 0.6);
+
+  --link-color: #40c5ec;
+  --link-color-bright: #40c5ec;
+  --form-control-focus: #4d88ff;
+  --scroll-thumb-bg: rgba(255, 255, 255, 0.15);
+  --wip-status: rgba(77, 136, 255, 0.4);
+  --card__bg: #3e424d;
+  --card-shadow: rgba(0, 0, 0, 0.2);
+  --statusbar__warning-bg: #87742b;
+  --checked-out: rgba(92, 184, 92, 0.3);
+  --toolbar__prompt: rgba(77, 136, 255, 0.2);
+
+  --code-bg: #1c1e23;
+  --code-foreground: rgba(255, 255, 255, 0.75);
+  --added-line: rgba(92, 184, 92, 0.2);
+  --deleted-line: rgba(217, 65, 61, 0.2);
+  --modified-line: rgba(0, 0, 0, 0.25);
+
+  /* Phase 13: values that were hard-coded in menu.css, diff.css and staging.css */
+  --menu-bg: #202020;
+  --menu-border: rgba(255, 255, 255, 0.06);
+  --menu-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  --menu-hover: rgba(255, 255, 255, 0.08);
+  --menu-hover-strong: rgba(255, 255, 255, 0.12);
+  --menu-divider: rgba(255, 255, 255, 0.12);
+  --diff-add-bg: rgba(92, 184, 92, 0.18);
+  --diff-del-bg: rgba(217, 65, 61, 0.18);
+  --diff-add-word: rgba(92, 184, 92, 0.4);
+  --diff-del-word: rgba(217, 65, 61, 0.4);
+  --on-accent: #ffffff;
+  --conflict-head-a: rgba(77, 136, 255, 0.45);
+  --conflict-head-b: rgba(46, 206, 157, 0.35);
+  --conflict-bar-bg: #34405f;
+  --merge-region-a: rgba(21, 160, 191, 0.3);
+  --merge-region-b: rgba(236, 185, 28, 0.28);
+  /* Syntax colours: Monaco's vs-dark rules */
+  --tok-variable: #74b0df;
+  --tok-variable-predefined: #4864aa;
+  --tok-variable-parameter: #9cdcfe;
+  --tok-constant: #569cd6;
+  --tok-comment: #608b4e;
+  --tok-number: #b5cea8;
+  --tok-number-hex: #5bb498;
+  --tok-regexp: #b46695;
+  --tok-annotation: #cc6666;
+  --tok-type: #3dc9b0;
+  --tok-delimiter: #dcdcdc;
+  --tok-delimiter-xml: #808080;
+  --tok-tag: #569cd6;
+  --tok-metatag: #dd6a6f;
+  --tok-key: #9cdcfe;
+  --tok-attribute-value: #ce9178;
+  --tok-string: #ce9178;
+  --tok-keyword: #569cd6;
+  --tok-keyword-flow: #c586c0;
+  --tok-invalid: #f44747;
+}
+
+/* Per-region overrides (theme "toolbar" / "tabsbar" sections). */
+.toolbar,
+.tabsbar {
+  --text-selected: rgba(255, 255, 255, 1);
+  --text-normal: rgba(255, 255, 255, 0.9);
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-disabled: rgba(255, 255, 255, 0.4);
+  --section-border: rgba(255, 255, 255, 0.2);
+  --input__bg: rgba(0, 0, 0, 0.2);
+  --link-color: #40c5ec;
+}
+
+:root {
+  --commit-field-bg: transparent;
+}

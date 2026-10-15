@@ -1,0 +1,63 @@
+# GitSlappin, optional Docker mode. Copy .env.example to .env and fill it in, then: docker compose up -d --build
+name: gitslappin
+services:
+  gitslappin:
+    build: .
+    init: true
+    # Start with Docker Desktop (also after a reboot) until you run `docker compose stop`.
+    restart: unless-stopped
+    read_only: true
+    user: "1000:1000"
+    ipc: private
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1536m
+    cpus: 2
+    pids_limit: 256
+    ports:
+      - "127.0.0.1:${GITSLAPPIN_PORT:-4417}:${GITSLAPPIN_PORT:-4417}"
+    environment:
+      GITSLAPPIN_BIND: "0.0.0.0"
+      GITSLAPPIN_NO_OPEN: "1"
+      GITSLAPPIN_WATCH: poll # bind mounts from Windows send no file events
+      GITSLAPPIN_DATA_DIR: /data
+      GITSLAPPIN_REPO_ROOTS: /repos
+      GITSLAPPIN_PATH_MAP: "${REPOS_DIR:-C:/repos}=/repos"
+      GITSLAPPIN_PORT: "${GITSLAPPIN_PORT:-4417}"
+      GITSLAPPIN_TOKEN: "${GITSLAPPIN_TOKEN:?set GITSLAPPIN_TOKEN in .env}"
+      GIT_USER_NAME: "${GIT_USER_NAME:?set GIT_USER_NAME in .env}"
+      GIT_USER_EMAIL: "${GIT_USER_EMAIL:?set GIT_USER_EMAIL in .env}"
+      GITSLAPPIN_AUTOCRLF: "${GITSLAPPIN_AUTOCRLF:-}"
+    volumes:
+      - type: bind
+        source: "${REPOS_DIR:-C:/repos}"
+        target: /repos
+      - type: volume
+        source: gitslappin-data
+        target: /data
+      - type: bind
+        source: "${SSH_DIR:?set SSH_DIR in .env}"
+        target: /run/host-ssh
+        read_only: true
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp
+      - /home/node:uid=1000,gid=1000,mode=700
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:' + (process.env.GITSLAPPIN_PORT || 4417) + '/api/ping', { headers: { 'x-gitslappin-token': process.env.GITSLAPPIN_TOKEN } }).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks: [gitslappin]
+
+networks:
+  gitslappin: {}
+
+volumes:
+  gitslappin-data: {}

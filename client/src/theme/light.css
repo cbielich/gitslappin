@@ -1,0 +1,157 @@
+/* GitKraken Light tokens (values from light.jsonc-default). Applied with <html data-theme="light">. */
+[data-theme='light'] {
+  color-scheme: light;
+  --white: #ffffff;
+  --black: #000000;
+  --red: #9f1a16;
+  --orange: #de9b43;
+  --yellow: #ecb91c;
+  --green: #00a857;
+  --teal: #00c1cd;
+  --blue: #4d88ff;
+  --ltblue: #5bc0de;
+  --purple: #c517b6;
+
+  --app__bg0: #fcfcfc;
+  --toolbar__bg0: #fafafa;
+  --toolbar__bg1: #ebebeb;
+  --toolbar__bg2: #fafafa;
+  --panel__bg0: #f3f3f3;
+  --panel__bg1: #fafafa;
+  --panel__bg2: #f0f0f0;
+  --glass: #ffffff33;
+  --glass-inverse-10: #0000001a;
+  --glass-inverse-5: #0000000d;
+  --input__bg: #ffffff7f;
+  --input-bg-warn-color: #de9b4399;
+  --panel-accent: #7600f6;
+  --panel-border: #c6c6c6;
+  --section-border: #cccccc;
+  --subtle-border: #e6e6e6;
+  --modal-overlay-color: #c8c8c899;
+
+  --graph-color-0: #15a0bf;
+  --graph-color-1: #0669f7;
+  --graph-color-2: #8e00c2;
+  --graph-color-3: #c517b6;
+  --graph-color-4: #d90171;
+  --graph-color-5: #cd0101;
+  --graph-color-6: #f25d2e;
+  --graph-color-7: #f2ca33;
+  --graph-color-8: #7bd938;
+  --graph-color-9: #2ece9d;
+
+  --text-selected: #000000;
+  --text-normal: rgba(0, 0, 0, 0.75);
+  --text-secondary: rgba(0, 0, 0, 0.6);
+  --text-disabled: rgba(0, 0, 0, 0.4);
+  --text-accent: #395bbf;
+  --text-inverse: #ffffff;
+  --text-bright: rgba(0, 0, 0, 0.9);
+  --text-dimmed: #00000033;
+  --text-dimmed-selected: #0000007f;
+  --text-selected-row: #000000;
+
+  --gkftux-blue: #5380ea;
+  --gkftux-repo-tab-border: #e9ebf0;
+  --gkftux-repo-tab-border-selected: #5380ea;
+  --gkftux-repo-tab-bg: #e9ebf0;
+  --gkftux-repo-tab-bg-selected: #ffffff;
+  --gkftux-repo-tab-icon: #0c96897f;
+  --gkftux-repo-tab-icon-selected: #5380ea;
+
+  --btn-text: var(--text-normal);
+  --btn-text-hover: var(--text-selected);
+  --default-border: var(--text-normal);
+  --default-bg: transparent;
+  --default-border-hover: var(--text-selected);
+  --primary-border: #4d88ff;
+  --primary-bg: #4d88ff26;
+  --primary-hover: #4d88ffcc;
+  --success-border: #00a857;
+  --success-bg: #00a85726;
+  --success-hover: #00a857cc;
+  --warning-border: #de9b43;
+  --warning-bg: #de9b4326;
+  --warning-hover: #de9b43cc;
+  --danger-border: #9f1a16;
+  --danger-bg: #9f1a1626;
+  --danger-hover: #9f1a16cc;
+  --hover-row: #5f8eed19;
+  --danger-row: #9f1a1699;
+  --selected-row: #5f8eed33;
+  --warning-row: #de9b4399;
+
+  --link-color: #005c95;
+  --link-color-bright: #005c95;
+  --form-control-focus: #4d88ff;
+  --scroll-thumb-bg: #00000026;
+  --wip-status: #4d88ff99;
+  --card__bg: #ffffff;
+  --card-shadow: #c1c5d7;
+  --statusbar__warning-bg: #f7e398;
+  --checked-out: #00a8574c;
+  --toolbar__prompt: #4d88ff33;
+
+  --code-bg: #fcfcfc;
+  --code-foreground: rgba(0, 0, 0, 0.75);
+  --added-line: #00a85726;
+  --deleted-line: #9f1a1626;
+  --modified-line: #00000033;
+
+  /* Not in light.jsonc-default: taken from the light palette above */
+  --commit-field-bg: #ffffff;
+  --stats-added-color: var(--green);
+  --stats-deleted-color: var(--red);
+  --stats-files-color: var(--orange);
+
+  /* Phase 13: values that were hard-coded in menu.css, diff.css and staging.css */
+  --menu-bg: #ffffff;
+  --menu-border: #c6c6c6;
+  --menu-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  --menu-hover: rgba(0, 0, 0, 0.06);
+  --menu-hover-strong: rgba(0, 0, 0, 0.1);
+  --menu-divider: rgba(0, 0, 0, 0.12);
+  --diff-add-bg: #00a85726;
+  --diff-del-bg: #9f1a1626;
+  --diff-add-word: #00a85759;
+  --diff-del-word: #9f1a1659;
+  --on-accent: #ffffff;
+  --conflict-head-a: rgba(77, 136, 255, 0.3);
+  --conflict-head-b: rgba(0, 168, 87, 0.25);
+  --conflict-bar-bg: #dfe6f7;
+  --merge-region-a: rgba(21, 160, 191, 0.22);
+  --merge-region-b: rgba(236, 185, 28, 0.3);
+  /* Syntax colours: Monaco's vs (light) rules */
+  --tok-variable: #001188;
+  --tok-variable-predefined: #4864aa;
+  --tok-variable-parameter: #001188;
+  --tok-constant: #0000ff;
+  --tok-comment: #008000;
+  --tok-number: #098658;
+  --tok-number-hex: #098658;
+  --tok-regexp: #811f3f;
+  --tok-annotation: #808080;
+  --tok-type: #267f99;
+  --tok-delimiter: #000000;
+  --tok-delimiter-xml: #800000;
+  --tok-tag: #800000;
+  --tok-metatag: #e00000;
+  --tok-key: #0451a5;
+  --tok-attribute-value: #0451a5;
+  --tok-string: #a31515;
+  --tok-keyword: #0000ff;
+  --tok-keyword-flow: #af00db;
+  --tok-invalid: #cd3131;
+}
+
+[data-theme='light'] .toolbar,
+[data-theme='light'] .tabsbar {
+  --text-selected: #000000;
+  --text-normal: rgba(0, 0, 0, 0.9);
+  --text-secondary: rgba(0, 0, 0, 0.6);
+  --text-disabled: rgba(0, 0, 0, 0.4);
+  --section-border: rgba(0, 0, 0, 0.2);
+  --input__bg: rgba(0, 0, 0, 0.2);
+  --link-color: #005c95;
+}

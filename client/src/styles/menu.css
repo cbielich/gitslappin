@@ -1,0 +1,214 @@
+/* Phase 5: context menus, inline branch input, branch picker, branch prompt. Look follows reference 06a/06b. */
+.ctx-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 270px;
+  padding: 4px 0;
+  background: var(--menu-bg);
+  border: 1px solid var(--menu-border);
+  border-radius: 8px;
+  box-shadow: var(--menu-shadow);
+  font-size: var(--fs-3);
+}
+
+.ctx-item {
+  width: 100%;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px 0 48px;
+  background: none;
+  border: 0;
+  color: var(--text-selected);
+  text-align: left;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.ctx-item:hover,
+.ctx-item:focus,
+.ctx-item.open {
+  background: var(--menu-hover);
+}
+
+/* The › comes from CSS so the row text is only the label. */
+.ctx-arrow {
+  margin-left: 24px;
+  color: var(--text-normal);
+}
+
+.ctx-arrow::after {
+  content: '›';
+}
+
+.ctx-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--menu-divider);
+}
+
+/* Inline branch name input in the BRANCH / TAG cell */
+.cell-ref.creating {
+  overflow: visible;
+  z-index: 5;
+}
+
+.branch-input {
+  width: calc(100% - 10px);
+  height: 18px;
+  padding: 0 6px;
+  background: var(--app__bg0);
+  border: 1px solid var(--blue);
+  border-radius: 3px;
+  color: var(--text-selected);
+  font-size: var(--fs-2);
+}
+
+.branch-input-error {
+  position: absolute;
+  left: 6px;
+  top: 21px;
+  z-index: 6;
+  padding: 3px 8px;
+  background: var(--panel__bg1);
+  border: 1px solid var(--warning-border);
+  border-radius: 3px;
+  box-shadow: 0 2px 8px var(--card-shadow);
+  color: var(--text-selected);
+  font-size: var(--fs-2);
+  white-space: nowrap;
+}
+
+/* Toolbar branch picker */
+.picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-wrap {
+  position: relative;
+}
+
+.branch-picker {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 40;
+  width: 260px;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+  background: var(--menu-bg);
+  border: 1px solid var(--menu-border);
+  border-radius: 8px;
+  box-shadow: var(--menu-shadow);
+}
+
+.branch-picker-filter {
+  margin: 8px;
+  height: 24px;
+  padding: 0 8px;
+  background: var(--input__bg);
+  border: 1px solid var(--section-border);
+  border-radius: 3px;
+  color: var(--text-selected);
+}
+
+.branch-picker-list {
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+
+.branch-picker-item {
+  width: 100%;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  background: none;
+  border: 0;
+  color: var(--text-selected);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.branch-picker-item:hover {
+  background: var(--menu-hover);
+}
+
+.branch-picker-item.current {
+  font-weight: 700;
+}
+
+/* "A local already exists" prompt */
+.branch-prompt {
+  position: absolute;
+  left: 50%;
+  top: 40px;
+  z-index: 45;
+  width: 360px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--panel__bg1);
+  border: 1px solid var(--section-border);
+  border-radius: 6px;
+  box-shadow: var(--menu-shadow);
+}
+
+.branch-prompt-message {
+  color: var(--text-selected);
+}
+
+.branch-prompt-input {
+  height: 26px;
+  padding: 0 8px;
+  background: var(--input__bg);
+  border: 1px solid var(--section-border);
+  border-radius: 3px;
+  color: var(--text-selected);
+}
+
+.branch-prompt-textarea {
+  min-height: 70px;
+  padding: 6px 8px;
+  background: var(--input__bg);
+  border: 1px solid var(--section-border);
+  border-radius: 3px;
+  color: var(--text-selected);
+  font: inherit;
+  resize: vertical;
+}
+
+.branch-prompt-label {
+  color: var(--text-secondary);
+  font-size: var(--fs-2);
+}
+
+.branch-prompt-error {
+  color: var(--orange);
+  font-size: var(--fs-2);
+}
+
+.branch-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ctx-item:focus {
+  outline: none;
+}

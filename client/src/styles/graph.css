@@ -1,0 +1,831 @@
+/* Phase 2: left panel, graph, right panel (commit selected). */
+.left-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.left-panel.collapsed {
+  width: 36px;
+  align-items: center;
+  padding-top: 12px;
+}
+
+.center-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.right-panel {
+  overflow-y: auto;
+}
+
+.mono {
+  font-family: Monaco, Menlo, Consolas, monospace;
+}
+
+.dim {
+  color: var(--text-secondary);
+}
+
+/* Left panel */
+.left-header {
+  flex: none;
+  align-items: flex-start;
+  padding-top: 10px;
+  height: 60px;
+}
+
+.left-header-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.viewing {
+  font-size: var(--fs-2);
+}
+
+.sb-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  height: 22px;
+  background: var(--input__bg);
+  border: 1px solid var(--section-border);
+  border-radius: 3px;
+  color: var(--text-secondary);
+}
+
+.sb-filter input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: 0;
+  color: var(--text-normal);
+  font: inherit;
+  font-size: var(--fs-2);
+}
+
+.sb-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sb-section {
+  border-bottom: 1px solid var(--subtle-border);
+}
+
+.sb-section-head,
+.sb-remote-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  background: none;
+  border: 0;
+  color: var(--text-normal);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sb-section-head:hover,
+.sb-remote-head:hover,
+.sb-item:hover {
+  background: var(--glass-inverse-5);
+}
+
+.sb-section-label {
+  flex: 1;
+  font-size: var(--fs-2);
+}
+
+.sb-count {
+  margin-left: auto;
+  color: var(--blue);
+  font-size: var(--fs-2);
+}
+
+.sb-remote-head {
+  height: 24px;
+  padding-left: 22px;
+  font-size: var(--fs-2);
+}
+
+.sb-remote-head span:first-of-type {
+  flex: 1;
+}
+
+.sb-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px 0 30px;
+  background: none;
+  border: 0;
+  color: var(--text-normal);
+  text-align: left;
+  font-size: var(--fs-2);
+  cursor: pointer;
+}
+
+.sb-item.current {
+  font-weight: 700;
+  color: var(--text-selected);
+}
+
+.sb-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-track {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: var(--fs-1);
+}
+
+/* Graph */
+.graph-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  --col-ref: 170px;
+  --col-graph: 150px;
+}
+
+.cell {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+}
+
+.cell-ref {
+  width: var(--col-ref);
+}
+
+.cell-graph {
+  width: var(--col-graph);
+}
+
+.cell-msg {
+  flex: 1;
+  min-width: 0;
+}
+
+.graph-header {
+  flex: none;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  font-size: var(--fs-1);
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--subtle-border);
+}
+
+.graph-header .cell {
+  padding-left: 8px;
+  overflow: visible;
+}
+
+.graph-header .cell-msg {
+  padding-left: 10px;
+}
+
+.col-resizer {
+  position: absolute;
+  right: -3px;
+  top: -6px;
+  width: 7px;
+  height: 26px;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.col-resizer::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  width: 1px;
+  height: 14px;
+  background: var(--section-border);
+}
+
+.graph-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+}
+
+.graph-rows {
+  position: relative;
+}
+
+.commit-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  font-size: var(--fs-2);
+  color: var(--text-normal);
+  cursor: default;
+  --lane: var(--graph-color-0);
+}
+
+.commit-row .cell {
+  height: 22px;
+}
+
+.commit-row:hover {
+  background: var(--hover-row);
+}
+
+.commit-row.selected {
+  background: var(--selected-row);
+  color: var(--text-selected-row);
+}
+
+.commit-row.selected .commit-subject {
+  font-weight: 600;
+}
+
+.commit-row.match .commit-subject {
+  background: var(--warning-bg);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--warning-border);
+}
+
+.cell-ref {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 6px;
+}
+
+.ref-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 28px);
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--lane) 38%, var(--app__bg0));
+  color: var(--text-selected);
+  font-size: var(--fs-2);
+  white-space: nowrap;
+}
+
+.ref-pill.current {
+  font-weight: 700;
+  background: color-mix(in srgb, var(--lane) 62%, var(--app__bg0));
+}
+
+.ref-pill-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ref-pill svg {
+  flex: none;
+}
+
+.ref-more {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--glass-inverse-10);
+  font-size: var(--fs-1);
+  color: var(--text-secondary);
+}
+
+.cell-graph {
+  overflow: hidden;
+}
+
+.lane-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+}
+
+.lane-band {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  right: 0;
+  background: color-mix(in srgb, var(--lane) 16%, transparent);
+}
+
+.commit-ring {
+  fill: var(--app__bg0);
+}
+
+.stash-node,
+.wip-node {
+  fill: var(--app__bg0);
+  stroke-width: 2;
+  stroke-dasharray: 2.5 2.5;
+}
+
+.cell-msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-left: 2px solid var(--lane);
+}
+
+.commit-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 2px;
+}
+
+.wip-row .cell-msg {
+  border-left-color: var(--wip-status);
+}
+
+.wip-box {
+  width: 90px;
+  padding: 0 6px;
+  height: 18px;
+  line-height: 17px;
+  border: 1px solid var(--section-border);
+  border-radius: 3px;
+  background: var(--input__bg);
+  color: var(--text-secondary);
+  font-size: var(--fs-1);
+}
+
+.wip-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--fs-2);
+}
+
+.wip-count.mod {
+  color: var(--orange);
+}
+
+.wip-count.add {
+  color: var(--green);
+}
+
+.wip-count.del {
+  color: var(--red);
+}
+
+.graph-error,
+.graph-empty {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.graph-error {
+  color: var(--red);
+}
+
+.graph-search {
+  position: absolute;
+  top: 30px;
+  right: 18px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background: var(--panel__bg1);
+  border: 1px solid var(--section-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--card-shadow);
+}
+
+.graph-search input {
+  width: 190px;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--input__bg);
+  border: 1px solid var(--section-border);
+  border-radius: 3px;
+  color: var(--text-normal);
+  font: inherit;
+  outline: 0;
+}
+
+.graph-search input:focus {
+  border-color: var(--form-control-focus);
+}
+
+.graph-search-count {
+  min-width: 56px;
+  text-align: center;
+  font-size: var(--fs-1);
+  color: var(--text-secondary);
+}
+
+/* Right panel */
+.details {
+  display: flex;
+  flex-direction: column;
+  color: var(--text-normal);
+  font-size: var(--fs-2);
+}
+
+.changes-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 30px;
+  background: var(--wip-status);
+  color: var(--text-selected);
+  font-size: var(--fs-1);
+}
+
+.btn-outline {
+  background: none;
+  border: 1px solid var(--text-normal);
+  border-radius: 2px;
+  padding: 1px 6px;
+  font-size: var(--fs-1);
+  cursor: pointer;
+}
+
+.btn-outline:hover {
+  border-color: var(--text-selected);
+  color: var(--text-selected);
+}
+
+.details-sha {
+  text-align: center;
+  padding: 8px 0;
+  color: var(--text-secondary);
+}
+
+.details-sha .mono {
+  color: var(--text-selected);
+}
+
+.details-loading,
+.details-error {
+  padding: 12px;
+  color: var(--text-secondary);
+}
+
+.details-error {
+  color: var(--red);
+}
+
+.message-box {
+  margin: 4px 12px 0;
+  min-height: 100px;
+  padding: 10px;
+  background: var(--app__bg0);
+  border: 1px solid var(--subtle-border);
+  border-radius: 6px;
+  font-size: var(--fs-3);
+  color: var(--text-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.message-handle {
+  width: 60px;
+  height: 3px;
+  margin: 6px auto 8px;
+  border-radius: 2px;
+  background: var(--glass-inverse-10);
+}
+
+.author-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 12px 12px;
+}
+
+.author-avatar {
+  flex: none;
+  image-rendering: pixelated;
+  border-radius: 2px;
+}
+
+.author-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.author-name {
+  font-size: var(--fs-3);
+  font-weight: 600;
+  color: var(--text-selected);
+}
+
+.author-date {
+  color: var(--text-secondary);
+}
+
+.author-date span {
+  color: var(--text-normal);
+}
+
+.author-parents {
+  text-align: right;
+  color: var(--text-secondary);
+  font-size: var(--fs-1);
+}
+
+.link-sha {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text-selected);
+  cursor: pointer;
+}
+
+.link-sha:hover {
+  text-decoration: underline;
+}
+
+.file-summary {
+  display: flex;
+  gap: 12px;
+  padding: 6px 12px;
+  color: var(--text-secondary);
+}
+
+.summary-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.file-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px 8px;
+  border-bottom: 1px solid var(--section-border);
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--section-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  background: none;
+  border: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.seg button.on {
+  background: var(--primary-bg);
+  color: var(--text-selected);
+}
+
+.file-list {
+  padding: 4px 0;
+}
+
+.file-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 12px;
+  background: none;
+  border: 0;
+  text-align: left;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.file-row:hover {
+  background: var(--hover-row);
+}
+
+.file-row.static {
+  cursor: default;
+}
+
+.file-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-dir {
+  color: var(--text-secondary);
+}
+
+.file-name {
+  color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-dir {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  color: var(--text-secondary);
+}
+
+.st {
+  flex: none;
+}
+
+.st-mod {
+  color: var(--orange);
+}
+
+.st-add {
+  color: var(--green);
+}
+
+.st-del {
+  color: var(--red);
+}
+
+.st-ren {
+  color: var(--ltblue);
+}
+
+.wip-header {
+  padding: 14px 12px;
+  text-align: center;
+  color: var(--text-normal);
+}
+
+.branch-chip {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--primary-bg);
+  color: var(--text-selected);
+  font-weight: 700;
+}
+
+.wip-section-head {
+  padding: 6px 12px;
+  font-weight: 700;
+  color: var(--text-selected);
+}
+
+/* View all files */
+.view-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.view-all input {
+  margin: 0;
+}
+
+.file-row.unchanged .file-name,
+.file-row.unchanged .file-dir {
+  color: var(--text-secondary);
+}
+
+.st-none {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+}
+
+/* Ref pills: muted dark tint of the lane colour; the checked-out branch is stronger. */
+.ref-pill {
+  background: color-mix(in srgb, var(--lane) 30%, var(--app__bg0));
+  color: var(--text-selected);
+}
+
+.ref-pill.current {
+  background: color-mix(in srgb, var(--lane) 52%, var(--app__bg0));
+  font-weight: 700;
+}
+
+/* Thin lane-coloured line from the pill across the graph column to the commit node. */
+.ref-line {
+  flex: 1 1 auto;
+  min-width: 2px;
+  height: 1px;
+  margin-left: -4px;
+  background: var(--lane);
+}
+
+.wip-link {
+  position: absolute;
+  top: 0;
+  pointer-events: none;
+}
+
+/* Optional columns (AUTHOR / DATE / SHA) */
+.cell-author {
+  width: 140px;
+}
+
+.cell-date {
+  width: 150px;
+}
+
+.cell-sha {
+  width: 70px;
+}
+
+.commit-row .cell-col {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.column-menu {
+  position: fixed;
+  z-index: 20;
+  min-width: 140px;
+  padding: 4px 0;
+  background: var(--panel__bg1);
+  border: 1px solid var(--section-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--card-shadow);
+}
+
+.column-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  background: none;
+  border: 0;
+  color: var(--text-normal);
+  text-align: left;
+  cursor: pointer;
+}
+
+.column-menu-item:hover {
+  background: var(--hover-row);
+}
+
+.column-menu-check {
+  display: inline-flex;
+  width: 12px;
+}
+
+/* The load-error row stays at the bottom of the viewport so the retry button is always reachable. */
+.graph-error {
+  position: sticky;
+  top: auto;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 30px;
+  background: var(--panel__bg1);
+}

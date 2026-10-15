@@ -1,0 +1,47 @@
+html {
+  font-size: 62.5%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Open Sans', Arial, sans-serif;
+  font-size: 1.2rem;
+  color: var(--text-normal);
+  background: var(--app__bg0);
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:root {
+  --fs-1: 1rem;
+  --fs-2: 1.2rem;
+  --fs-3: 1.4rem;
+  --fs-4: 1.6rem;
+  --fs-5: 1.8rem;
+  --fs-6: 2rem;
+  --fs-7: 2.4rem;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb-bg);
+  border-radius: 5px;
+}

@@ -1,0 +1,207 @@
+/* Phase 6: conflict screens. Look follows reference 08a/08b, 12-15. */
+.op-banner-row {
+  cursor: pointer;
+}
+
+.op-banner-row .cell-msg,
+.op-banner-row .cell-col.op-banner-msg {
+  background: var(--warning-row);
+  border-left-color: var(--warning-border);
+  color: var(--text-selected);
+}
+
+.op-banner-msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.op-banner-row .cell-msg svg {
+  flex: none;
+}
+
+.conflict-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px 4px;
+  font-size: var(--fs-3);
+  color: var(--text-selected);
+}
+
+.st-conflict {
+  flex: none;
+  color: var(--orange);
+}
+
+.st-resolved {
+  flex: none;
+  color: var(--green);
+}
+
+.conflict-subtitle {
+  padding: 6px 12px 8px;
+  text-align: center;
+  font-size: var(--fs-2);
+  color: var(--text-normal);
+}
+
+.conflict-pill {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 3px;
+  color: var(--text-selected);
+}
+
+.conflict-pill.head-a {
+  background: var(--conflict-head-a);
+}
+
+.conflict-pill.head-b {
+  background: var(--conflict-head-b);
+}
+
+.conflict-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+}
+
+.conflict-file .stage-btn {
+  opacity: 0;
+}
+
+.conflict-file:hover .stage-btn,
+.conflict-file:focus-within .stage-btn {
+  opacity: 1;
+}
+
+.stage-btn.mark-btn {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.stage-btn.mark-btn:hover:not(:disabled) {
+  background: var(--warning-hover);
+}
+
+.conflict-panel .stage-btn.mark-btn.always {
+  opacity: 1;
+  margin-right: 6px;
+}
+
+.rebase-commit-label {
+  font-size: var(--fs-3);
+  color: var(--text-normal);
+}
+
+.op-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.op-buttons .commit-btn {
+  flex: 1;
+  width: auto;
+}
+
+.commit-btn.abort {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--text-selected);
+  cursor: pointer;
+}
+
+.commit-btn.abort:hover:not(:disabled) {
+  background: var(--danger-hover);
+}
+
+/* GitKraken confirm bar (reference 09a): full width at the top of the repository view. */
+.columns {
+  position: relative;
+}
+
+.confirm-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  height: 44px;
+  background: var(--conflict-bar-bg);
+  color: var(--text-selected);
+  font-size: var(--fs-3);
+}
+
+.confirm-bar .confirm-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 70%;
+}
+
+/* git's own words under the question (phase 11: why -d refused) */
+.confirm-bar.has-detail {
+  height: auto;
+  min-height: 44px;
+  padding: 6px 12px;
+}
+
+.confirm-bar .confirm-detail {
+  font-size: var(--fs-2);
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.confirm-bar .confirm-ok,
+.confirm-bar .confirm-cancel {
+  padding: 2px 10px;
+  border-radius: 2px;
+  background: none;
+  font-size: var(--fs-2);
+  font-weight: 600;
+  color: var(--text-selected);
+  cursor: pointer;
+}
+
+.confirm-bar .confirm-ok {
+  border: 1px solid var(--danger-border);
+  background: var(--danger-bg);
+}
+
+.confirm-bar .confirm-cancel {
+  border: 1px solid var(--text-selected);
+}
+
+/* Set upstream bar (phase 7): the slate confirm bar with a remote select and a branch input */
+.upstream-bar {
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 12px;
+}
+
+.upstream-select,
+.upstream-input {
+  height: 26px;
+  padding: 0 8px;
+  background: var(--input__bg);
+  border: 1px solid var(--section-border);
+  border-radius: 3px;
+  color: var(--text-selected);
+}
+
+.upstream-input {
+  width: 220px;
+}
+
+.upstream-error {
+  color: var(--orange);
+  font-size: var(--fs-2);
+}

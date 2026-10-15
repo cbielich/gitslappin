@@ -1,0 +1,153 @@
+/* Phase 13: status bar extras, Activity Logs panel, Preferences screen. Colours come from the theme tokens only. */
+.statusbar {
+  justify-content: space-between;
+}
+
+.statusbar-left,
+.statusbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.statusbar-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.statusbar-btn:hover,
+.statusbar-btn.on {
+  color: var(--text-selected);
+  background: var(--glass-inverse-10);
+}
+
+.activity-log {
+  flex: none;
+  height: 200px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel__bg1);
+  border-top: 1px solid var(--section-border);
+}
+
+.activity-log-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--subtle-border);
+  font-weight: 600;
+  color: var(--text-selected);
+}
+
+.activity-log-error {
+  padding: 6px 10px;
+  color: var(--red);
+}
+
+.activity-log-rows {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-family: Consolas, monospace;
+  font-size: var(--fs-2, 1.2rem);
+}
+
+.activity-log-row {
+  display: flex;
+  gap: 12px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+.activity-log-row:hover {
+  background: var(--hover-row);
+}
+
+.activity-log-time,
+.activity-log-duration {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.activity-log-args {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-normal);
+}
+
+.activity-log-code {
+  flex: none;
+  min-width: 2ch;
+  text-align: right;
+  color: var(--green);
+}
+
+.activity-log-row.failed .activity-log-code {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.preferences {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: auto;
+  padding: 24px 32px;
+  background: var(--app__bg0);
+  color: var(--text-normal);
+}
+
+.preferences-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.preferences-title {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--text-selected);
+}
+
+.preferences-section-title {
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text-selected);
+  border-bottom: 1px solid var(--section-border);
+}
+
+.preferences-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.preferences-label {
+  min-width: 120px;
+}
+
+.preferences-options {
+  display: flex;
+  gap: 16px;
+}
+
+.preferences-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
