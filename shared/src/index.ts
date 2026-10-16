@@ -37,11 +37,18 @@ export interface ApiError {
 export const TOKEN_HEADER = 'X-GitSlappin-Token';
 
 export * from './branchName';
+export * from './cloneUrl';
+export * from './remoteUrl';
+export * from './folderName';
+export * from './repoCreate';
 export * from './diff';
 export * from './git';
 export * from './graph';
 export * from './identicon';
+export * from './compareMode';
+export * from './ignorePattern';
 export { buildPatch } from './patch';
 export { wordDiff, wordDiffHunk, type Seg } from './wordDiff';
 export * from './merge3';
 export * from './mergeTool';
+export * from './rewrite';

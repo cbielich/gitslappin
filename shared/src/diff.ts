@@ -46,7 +46,7 @@ export interface DiffContents {
   new: string;
 }
 
-export type DiffSource = 'commit' | 'unstaged' | 'staged' | 'stash';
+export type DiffSource = 'commit' | 'unstaged' | 'staged' | 'stash' | 'workdir';
 
 const HUNK_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: (.*))?$/;
 

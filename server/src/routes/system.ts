@@ -2,8 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { aliveStream, type AutoExit } from '../alive';
 
 /** Both routes sit behind the app-wide token hook (header only; a token in the query string is not read). */
-export function registerSystemRoutes(app: FastifyInstance, tracker: Pick<AutoExit, 'connect'>): void {
-  app.get('/api/ping', async () => ({ app: 'gitslappin', pid: process.pid }));
+export function registerSystemRoutes(app: FastifyInstance, tracker: Pick<AutoExit, 'connect'>, desktop: () => boolean = () => false, terminal: () => { terminal: boolean; terminalBash: boolean } = () => ({ terminal: false, terminalBash: false })): void {
+  app.get('/api/ping', async () => ({ app: 'gitslappin', pid: process.pid, desktop: desktop(), ...terminal() }));
 
   // A response that is never finished: the window holds it open, and its closing is how the server learns the window is gone.
   app.get('/api/alive', (_req, reply) => {

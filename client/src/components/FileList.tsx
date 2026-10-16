@@ -38,12 +38,12 @@ export function buildTree(files: WipFile[]): TreeNode {
   return root;
 }
 
-export type Entry = { kind: 'dir'; key: string; name: string; depth: number } | { kind: 'file'; key: string; file: WipFile; depth: number };
+export type Entry = { kind: 'dir'; key: string; name: string; path: string; depth: number } | { kind: 'file'; key: string; file: WipFile; depth: number };
 
 /** The tree as one flat list of rows (folders first, both sorted by name). */
 export function flattenTree(node: TreeNode, depth: number, prefix: string, out: Entry[]): Entry[] {
   for (const d of [...node.dirs.values()].sort((a, b) => a.name.localeCompare(b.name))) {
-    out.push({ kind: 'dir', key: `d:${prefix}${d.name}`, name: d.name, depth });
+    out.push({ kind: 'dir', key: `d:${prefix}${d.name}`, name: d.name, path: `${prefix}${d.name}`, depth });
     flattenTree(d, depth + 1, `${prefix}${d.name}/`, out);
   }
   for (const f of node.files.slice().sort((a, b) => a.path.localeCompare(b.path))) out.push({ kind: 'file', key: `f:${f.path}`, file: f, depth });
@@ -120,11 +120,13 @@ interface Props {
   selection?: ReadonlySet<string>;
   onToggle?: (f: WipFile) => void;
   onContext?: (f: WipFile, x: number, y: number) => void;
+  /** V3: right-click on a tree folder row (the folder's path, no trailing slash). */
+  onDirContext?: (dir: string, x: number, y: number) => void;
 }
 
 const NONE: ReadonlySet<string> = new Set();
 
-export function FileList({ files, side, mode, onOpen, onAction, disabled, selection = NONE, onToggle, onContext }: Props) {
+export function FileList({ files, side, mode, onOpen, onAction, disabled, selection = NONE, onToggle, onContext, onDirContext }: Props) {
   // The callers pass new functions on every render; Row is memoised, so it gets stable wrappers.
   const openRef = useRef(onOpen);
   openRef.current = onOpen;
@@ -170,7 +172,21 @@ export function FileList({ files, side, mode, onOpen, onAction, disabled, select
   const shown = windowed ? entries.slice(range.first, Math.min(entries.length, range.last + 1)) : entries;
   const nodes = shown.map((e) =>
     e.kind === 'dir' ? (
-      <div key={e.key} className="tree-dir" data-testid="wip-tree-dir" style={{ paddingLeft: 8 + e.depth * 14 }}>
+      <div
+        key={e.key}
+        className="tree-dir"
+        data-testid="wip-tree-dir"
+        data-path={e.path}
+        style={{ paddingLeft: 8 + e.depth * 14 }}
+        {...(onDirContext
+          ? {
+              onContextMenu: (ev: React.MouseEvent) => {
+                ev.preventDefault();
+                onDirContext(e.path, ev.clientX, ev.clientY);
+              },
+            }
+          : {})}
+      >
         <Folder size={12} /> {e.name}
       </div>
     ) : (

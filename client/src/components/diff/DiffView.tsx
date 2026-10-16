@@ -31,13 +31,18 @@ interface Props {
   busy?: boolean;
   /** Called when a diff request ends (loaded or failed), so the caller knows the refresh is done. */
   onSettled?: () => void;
+  /** V5b: open File History (File View, blame off) or File History with blame on. Left out where the buttons must not show. */
+  onHistory?: () => void;
+  onBlame?: () => void;
+  /** Inside File History: no path header and no File View / Diff View switch (File History has its own). */
+  embedded?: boolean;
 }
 
 type ContentsState = { state: 'loading' } | { state: 'ready'; contents: DiffContents } | { state: 'error'; message: string; status: 'binary' | 'other' };
 
 const errMessage = (e: unknown, fallback: string): string => (e instanceof Error ? e.message : fallback);
 
-export function DiffView({ repoId, target, onClose, refreshKey = 0, onAction, onDiscardHunk, busy = false, onSettled }: Props) {
+export function DiffView({ repoId, target, onClose, refreshKey = 0, onAction, onDiscardHunk, busy = false, onSettled, onHistory, onBlame, embedded = false }: Props) {
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [full, setFull] = useState(false);
@@ -222,6 +227,7 @@ export function DiffView({ repoId, target, onClose, refreshKey = 0, onAction, on
 
   return (
     <div className="diff-view" data-testid="diff-view" data-view={dataView} data-current-change={current}>
+      {!embedded && (
       <div className="diff-header">
         <StatusIcon status={target.status} />
         <span className="diff-path" data-testid="diff-path" title={target.oldPath ? `${target.oldPath} -> ${target.path}` : target.path}>
@@ -245,6 +251,7 @@ export function DiffView({ repoId, target, onClose, refreshKey = 0, onAction, on
           <X size={16} />
         </button>
       </div>
+      )}
       <div className="diff-toolbar">
         <div className="diff-toolbar-left" />
         <div className="diff-toolbar-center">
@@ -253,6 +260,7 @@ export function DiffView({ repoId, target, onClose, refreshKey = 0, onAction, on
               {target.source === 'staged' ? 'Staged' : 'Unstaged'}
             </span>
           )}
+          {!embedded && (
           <div className="seg">
             <button className={fileMode ? 'on' : ''} data-testid="mode-file" onClick={() => setFileMode(true)}>
               File View
@@ -261,8 +269,23 @@ export function DiffView({ repoId, target, onClose, refreshKey = 0, onAction, on
               Diff View
             </button>
           </div>
+          )}
         </div>
         <div className="diff-toolbar-right">
+          {!embedded && (onBlame || onHistory) && (
+            <span className="diff-group">
+              {onBlame && (
+                <button className="diff-tool diff-tool-text" data-testid="diff-blame-button" onClick={onBlame}>
+                  Blame
+                </button>
+              )}
+              {onHistory && (
+                <button className="diff-tool diff-tool-text" data-testid="diff-history-button" onClick={onHistory}>
+                  History
+                </button>
+              )}
+            </span>
+          )}
           <span className="diff-group">
             {iconBtn('change-prev', 'Previous Change', false, () => step(-1), <ArrowUp size={14} />, fileMode)}
             {iconBtn('change-next', 'Next Change', false, () => step(1), <ArrowDown size={14} />, fileMode)}

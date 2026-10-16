@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { repoIdFor } from '../state/registry';
 import { readOpState } from './opState';
+import { redoIgnore, undoIgnore, type IgnoreEntry } from './ignoreUndo';
+import { moveRewrite, type RewriteEntry } from './rewriteUndo';
 import { runExclusive, setMutationHook } from './queue';
 import { hasExtUrl, net, readRemotes } from './remote';
 import { runGit, type GitResult } from './runner';
@@ -28,7 +30,13 @@ export type UndoEntry =
   // Phase 11 (destructive.ts records these inside its own lock). None of them has a redo.
   | { kind: 'discard'; head: string; snap: string | null; files: PinnedFile[]; indexAfter: string }
   | { kind: 'reset'; mode: 'soft' | 'mixed' | 'hard'; branch: string; prev: string; to: string; snap: string | null; files: PinnedFile[]; indexAfter: string }
-  | { kind: 'delete-branch'; name: string; sha: string; config: { remote?: string; merge?: string }; remote?: { name: string; rb: string; sha: string } };
+  | { kind: 'delete-branch'; name: string; sha: string; config: { remote?: string; merge?: string }; remote?: { name: string; rb: string; sha: string } }
+  // V2: a local tag delete. `sha` is the tag object (the commit for a lightweight tag), pinned under refs/gitslappin/undo/ before the delete.
+  | { kind: 'delete-tag'; name: string; sha: string }
+  // V3: a .gitignore append (ignore.ts records it inside its own lock).
+  | IgnoreEntry
+  // V4: reword / squash (and, in part B, interactive rebase and multi cherry-pick). Both directions are kept.
+  | RewriteEntry;
 
 interface Snap {
   head: string;
@@ -153,6 +161,12 @@ function labelOf(e: Entry): string {
       return `reset '${cut(clean(e.branch))}'`;
     case 'delete-branch':
       return `delete branch '${cut(clean(e.name))}'`;
+    case 'delete-tag':
+      return `delete tag '${cut(clean(e.name))}'`;
+    case 'ignore':
+      return e.label;
+    case 'rewrite':
+      return e.label;
   }
 }
 
@@ -379,7 +393,31 @@ async function undoEntry(root: string, repoId: string, e: Entry): Promise<{ resu
       return { result: await undoReset(root, repoId, e, cur) };
     case 'delete-branch':
       return { result: await undoDeleteBranch(root, repoId, e) };
+    case 'delete-tag': {
+      const bad = await tagEntryProblem(root, repoId, e);
+      if (bad) return { result: bad };
+      if ((await run(root, repoId, ['show-ref', '--verify', '--quiet', `refs/tags/${e.name}`])).code === 0) return { result: refused(`A tag named '${cut(clean(e.name))}' already exists.`) };
+      // The empty old value means "only if it does not exist": nothing is overwritten.
+      const res = await run(root, repoId, ['update-ref', `refs/tags/${e.name}`, e.sha, '']);
+      return res.code === 0 ? { result: { outcome: 'done' }, next: e } : { result: failed(res, 'git update-ref failed.') };
+    }
+    case 'ignore': {
+      const r = await undoIgnore(root, repoId, e);
+      return r.outcome === 'done' ? { result: r, next: e } : { result: r };
+    }
+    case 'rewrite': {
+      const r = await moveRewrite(root, repoId, e, 'undo', cur);
+      return r.outcome === 'done' ? { result: r, next: e } : { result: r };
+    }
   }
+}
+
+/** A saved tag entry is only used when its name and sha are still well formed and the pinned object is still there. */
+async function tagEntryProblem(root: string, repoId: string, e: { name: string; sha: string }): Promise<UndoResult | null> {
+  if (!SHA.test(e.sha) || (await run(root, repoId, ['cat-file', '-e', e.sha])).code !== 0) return refused(MISSING);
+  if (e.name === '' || e.name.startsWith('-') || e.name.includes('+') || CTRL.test(e.name)) return refused('The saved tag name is not valid.');
+  if ((await run(root, repoId, ['check-ref-format', `refs/tags/${e.name}`])).code !== 0) return refused('The saved tag name is not valid.');
+  return null;
 }
 
 type Cur = { sha: string | null; branch: string | null };
@@ -572,6 +610,21 @@ async function redoEntry(root: string, repoId: string, e: Entry): Promise<{ resu
     case 'reset':
     case 'delete-branch':
       return { result: refused(CANNOT_REDO) }; // never recorded on the redo side: undoing these leaves no redo
+    case 'delete-tag': {
+      const bad = await tagEntryProblem(root, repoId, e);
+      if (bad) return { result: bad };
+      // Compare-and-swap: only deletes the tag if it still is the object that was restored.
+      const res = await run(root, repoId, ['update-ref', '-d', `refs/tags/${e.name}`, e.sha]);
+      return res.code === 0 ? { result: { outcome: 'done' }, next: e } : { result: refused(`The tag '${cut(clean(e.name))}' has changed, so it was not deleted.`) };
+    }
+    case 'ignore': {
+      const r = await redoIgnore(root, repoId, e);
+      return r.outcome === 'done' ? { result: r, next: e } : { result: r };
+    }
+    case 'rewrite': {
+      const r = await moveRewrite(root, repoId, e, 'redo', cur);
+      return r.outcome === 'done' ? { result: r, next: e } : { result: r };
+    }
   }
 }
 

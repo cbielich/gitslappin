@@ -128,11 +128,11 @@ async function pickFromPullMenu(page: Page, mode: 'fetch' | Mode): Promise<void>
 const toastTitle = (page: Page) => page.getByTestId('toast-title');
 
 test.describe('prefs (pull mode, one per user)', () => {
-  test('default is merge; GET/PUT round-trip; only {pullMode, theme, zoom} is stored', async ({ request }) => {
-    expect(await getMode(request)).toEqual({ pullMode: 'merge', theme: 'dark', zoom: 1 }); // first test of the file: nothing has saved a mode yet
+  test('default is merge; GET/PUT round-trip; only {pullMode, theme, zoom, autoFetchMinutes} is stored', async ({ request }) => {
+    expect(await getMode(request)).toEqual({ pullMode: 'merge', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' }); // first test of the file: nothing has saved a mode yet
     for (const mode of ['rebase', 'ff-only', 'merge'] as const) {
       await setMode(request, mode);
-      expect(await getMode(request)).toEqual({ pullMode: mode, theme: 'dark', zoom: 1 });
+      expect(await getMode(request)).toEqual({ pullMode: mode, theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
     }
   });
 
@@ -145,13 +145,13 @@ test.describe('prefs (pull mode, one per user)', () => {
     }
     const noMode = await request.put('/api/prefs', { headers, data: {} });
     expect(noMode.status()).toBeGreaterThanOrEqual(400);
-    expect(await getMode(request)).toEqual({ pullMode: 'ff-only', theme: 'dark', zoom: 1 });
+    expect(await getMode(request)).toEqual({ pullMode: 'ff-only', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
   });
 
   test('extra keys are never stored or echoed (no spreading of the body)', async ({ request }) => {
     await request.put('/api/prefs', { headers, data: { pullMode: 'rebase', evil: 'x', __proto__: { polluted: true }, constructor: { prototype: { polluted: true } } } });
     const body = (await getMode(request)) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(['pullMode', 'theme', 'zoom']);
+    expect(Object.keys(body).sort()).toEqual(['autoFetchMinutes', 'pullMode', 'terminalCursor', 'terminalFontSize', 'terminalShell', 'theme', 'zoom']);
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
     await setMode(request, 'merge');
   });
@@ -161,7 +161,7 @@ test.describe('prefs (pull mode, one per user)', () => {
     const res = await request.put('/api/prefs', { headers, data: { pullMode: 'rebase', pad: 'x'.repeat(300_000) } });
     expect(res.status()).toBeGreaterThanOrEqual(400);
     expect(res.status()).toBeLessThan(500);
-    expect(await getMode(request)).toEqual({ pullMode: 'merge', theme: 'dark', zoom: 1 });
+    expect(await getMode(request)).toEqual({ pullMode: 'merge', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
   });
 
   test('prefs need the token', async ({ request }) => {
@@ -203,7 +203,7 @@ test.describe('Pull menu and fetch', () => {
     expect(hasRef(fx.a, 'refs/remotes/origin/old')).toBe(false);
     expect(hasRef(fx.a, 'refs/heads/old')).toBe(true);
     expect(headSha(fx.a)).toBe(fx.baseSha);
-    expect(await getMode(page.request)).toEqual({ pullMode: 'merge', theme: 'dark', zoom: 1 }); // Fetch All is not a pull mode
+    expect(await getMode(page.request)).toEqual({ pullMode: 'merge', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' }); // Fetch All is not a pull mode
     await expect(page.getByTestId('toast')).toHaveCount(0);
   });
 
@@ -246,7 +246,7 @@ test.describe('pull modes', () => {
     await expect.poll(() => headSha(fx.a)).toBe(sha);
     expect(parentCount(fx.a)).toBe(1);
     await expect(toastTitle(page)).toHaveText(L.pulled);
-    expect(await getMode(page.request)).toEqual({ pullMode: 'merge', theme: 'dark', zoom: 1 });
+    expect(await getMode(page.request)).toEqual({ pullMode: 'merge', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
   });
 
   test('Pull (fast-forward if possible) on diverged branches makes a merge commit', async ({ page }) => {
@@ -271,7 +271,7 @@ test.describe('pull modes', () => {
     expect(headSha(fx.a)).toBe(before);
     expect(parentCount(fx.a)).toBe(1);
     await expect(page.getByTestId('op-banner')).toHaveCount(0);
-    expect(await getMode(page.request)).toEqual({ pullMode: 'ff-only', theme: 'dark', zoom: 1 });
+    expect(await getMode(page.request)).toEqual({ pullMode: 'ff-only', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
   });
 
   test('Pull (rebase) puts the local commit on top of origin', async ({ page }) => {
@@ -284,7 +284,7 @@ test.describe('pull modes', () => {
     expect(subjects(fx.a)[0]).toBe('Local side commit');
     expect(parentCount(fx.a)).toBe(1);
     await expect(toastTitle(page)).toHaveText(L.pulled);
-    expect(await getMode(page.request)).toEqual({ pullMode: 'rebase', theme: 'dark', zoom: 1 });
+    expect(await getMode(page.request)).toEqual({ pullMode: 'rebase', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
   });
 
   test('the Pull button itself runs the saved mode', async ({ page }) => {
@@ -308,7 +308,7 @@ test.describe('pull modes', () => {
     await page.getByTestId('pull-options-toggle').click();
     await expect(option(page, 'rebase')).toHaveAttribute('data-default', 'true');
     await expect(option(page, 'merge')).not.toHaveAttribute('data-default', 'true');
-    expect(await getMode(page.request)).toEqual({ pullMode: 'rebase', theme: 'dark', zoom: 1 });
+    expect(await getMode(page.request)).toEqual({ pullMode: 'rebase', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
   });
 
   test('a pull conflict (merge) opens the phase 6 merge screens, with no failure toast', async ({ page }) => {

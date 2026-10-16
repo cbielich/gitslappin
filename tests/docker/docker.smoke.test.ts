@@ -221,6 +221,18 @@ describe.skipIf(!dockerOk)('docker mode smoke ("docker not available" skips this
     expect(JSON.parse(bad.body).error).toBe(`In Docker, GitSlappin can only open folders under the mounted folders (/repos = ${fwd(reposDir)}).`);
   });
 
+  it('V1: POST /api/repos/init through a Windows-style host path creates the repo in the mounted folder with an Initial commit', async () => {
+    const name = `docker-init-${suffix}`;
+    const res = await api('/api/repos/init', { method: 'POST', body: { parent: reposDir, name } }); // reposDir typed the Windows way (backslashes on Windows)
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body).root).toBe(`/repos/${name}`);
+    const created = join(reposDir, name);
+    expect(readFileSync(join(created, 'README.md'), 'utf8')).toBe(`# ${name}\n`);
+    expect(hostGit(['log', '--format=%s'], created).trim()).toBe('Initial commit');
+    const bad = await api('/api/repos/init', { method: 'POST', body: { parent: '/etc', name: 'x' } });
+    expect(bad.status).toBe(400);
+  });
+
   it('GET /api/fs/list lists /repos but refuses /repos/.., /, C:\\Windows and an escaping symlink', async () => {
     const list = (p: string) => api(`/api/fs/list?path=${encodeURIComponent(p)}`);
     const ok = await list('/repos');

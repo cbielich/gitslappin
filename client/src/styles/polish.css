@@ -151,3 +151,26 @@
   gap: 6px;
   cursor: pointer;
 }
+
+.preferences-section + .preferences-section {
+  margin-top: 24px;
+}
+
+.preferences-number {
+  width: 72px;
+  padding: 3px 6px;
+  background: var(--input__bg);
+  color: var(--text-normal);
+  border: 1px solid var(--section-border);
+  border-radius: 3px;
+}
+
+.preferences-help {
+  margin: 6px 0 0 144px;
+  font-size: var(--fs-2);
+  color: var(--text-secondary);
+}
+
+.preferences-warning {
+  color: var(--warning-border);
+}

@@ -1,18 +1,26 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { RepoInfo } from '@gitslappin/shared';
 import { api } from '../api';
+import { CloneRepoModal } from './CloneRepoModal';
 import { FolderBrowser } from './FolderBrowser';
+import { InitRepoModal } from './InitRepoModal';
 
-export function OpenRepoView({ onOpened }: { onOpened: (repo: RepoInfo) => void }) {
+/** `request`: the menu bar or the palette asks for the Clone or Init window (a new object each time). */
+export function OpenRepoView({ onOpened, request }: { onOpened: (repo: RepoInfo) => void; request?: { modal: 'clone' | 'init' } | null }) {
   const [path, setPath] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [browsing, setBrowsing] = useState(false);
+  const [modal, setModal] = useState<'clone' | 'init' | null>(null);
+  const pathRef = useRef<HTMLInputElement>(null);
   const [recent, setRecent] = useState<RepoInfo[]>([]);
 
   useEffect(() => {
     api.recent().then(setRecent).catch(() => undefined);
   }, []);
+  useEffect(() => {
+    if (request) setModal(request.modal);
+  }, [request]);
 
   async function open(p: string) {
     setBusy(true);
@@ -27,6 +35,7 @@ export function OpenRepoView({ onOpened }: { onOpened: (repo: RepoInfo) => void 
   }
 
   const closeBrowser = useCallback(() => setBrowsing(false), []);
+  const closeModal = useCallback(() => setModal(null), []);
 
   async function openFromBrowser(p: string) {
     const repo = await api.openRepo(p); // a failure is shown inside the browser
@@ -42,8 +51,20 @@ export function OpenRepoView({ onOpened }: { onOpened: (repo: RepoInfo) => void 
   return (
     <div className="open-repo" data-testid="open-repo-view">
       <h2>Open a repository</h2>
+      <div className="open-actions">
+        <button type="button" className="btn" data-testid="open-view-open" onClick={() => pathRef.current?.focus()}>
+          Open
+        </button>
+        <button type="button" className="btn" data-testid="open-view-clone" onClick={() => setModal('clone')}>
+          Clone
+        </button>
+        <button type="button" className="btn" data-testid="open-view-create" onClick={() => setModal('init')}>
+          Create
+        </button>
+      </div>
       <form className="open-form" onSubmit={submit}>
         <input
+          ref={pathRef}
           data-testid="open-path-input"
           value={path}
           placeholder="Paste a repository folder path"
@@ -58,6 +79,8 @@ export function OpenRepoView({ onOpened }: { onOpened: (repo: RepoInfo) => void 
         </button>
       </form>
       {browsing && <FolderBrowser start={path} onClose={closeBrowser} onOpen={openFromBrowser} />}
+      {modal === 'clone' && <CloneRepoModal onClose={closeModal} onOpened={onOpened} />}
+      {modal === 'init' && <InitRepoModal onClose={closeModal} onOpened={onOpened} />}
       {error && (
         <div className="open-error" data-testid="open-error" role="alert">
           {error}

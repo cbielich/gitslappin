@@ -1,7 +1,8 @@
-import { lstat, truncate, writeFile } from 'node:fs/promises';
+import { lstat, readFile, truncate, writeFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { repoIdFor } from '../state/registry';
 import { rebaseBackend, readOpState } from './opState';
+import { clearPending, finishPending } from './rewritePending';
 import { runExclusive } from './queue';
 import { runGit, type EnvOverride, type GitResult } from './runner';
 
@@ -28,7 +29,7 @@ const NO_EDITOR: EnvOverride = { GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true'
 
 /** Placeholders from en-us.json StashMessage-Merge / StashMessage-RebaseOnto. */
 const stashMessageMerge = (head: string, other: string): string => `Auto stash before merge of "${head}" and "${other}"`;
-const stashMessageRebase = (head: string, onto: string): string => `Auto stash before rebase of "${head}" onto "${onto}"`;
+export const stashMessageRebase = (head: string, onto: string): string => `Auto stash before rebase of "${head}" onto "${onto}"`;
 
 function failed(res: GitResult, fallback: string, stash?: { message: string }): IntegrateResult {
   const text = `${res.stderr}${res.stdout}`.trim();
@@ -41,7 +42,7 @@ const blocked = (): IntegrateResult => ({ outcome: 'blocked', error: 'Another op
  * Short branch name -> its full ref (refs/heads/<n>, else refs/remotes/<n>), or null. git is given the full ref, never
  * the bare name: a tag of the same name would win a bare name.
  */
-async function branchRef(root: string, repoId: string, name: string): Promise<{ ref: string; sha: string } | null> {
+export async function branchRef(root: string, repoId: string, name: string): Promise<{ ref: string; sha: string } | null> {
   if (name === '' || name.length > 255 || name.includes('\0') || name.startsWith('-')) return null;
   const res = await runGit(['for-each-ref', '--format=%(refname)%1f%(objectname)', 'refs/heads', 'refs/remotes'], { cwd: root, repoId });
   if (res.code !== 0) return null;
@@ -79,7 +80,7 @@ const stashTip = async (root: string, repoId: string): Promise<string> =>
  * Stashes everything (untracked files too) when the tree is dirty. Returns the stash info, undefined when nothing
  * needed stashing, or a failed result (the caller must then not run the merge or rebase).
  */
-async function autoStash(root: string, repoId: string, message: string): Promise<{ message: string } | undefined | IntegrateResult> {
+export async function autoStash(root: string, repoId: string, message: string): Promise<{ message: string } | undefined | IntegrateResult> {
   const dirty = await isDirty(root, repoId);
   if (dirty === null) return failed({ code: 1, stdout: '', stderr: 'git status failed.' }, 'git status failed.');
   if (!dirty) return undefined;
@@ -90,12 +91,13 @@ async function autoStash(root: string, repoId: string, message: string): Promise
   return after !== '' && after !== before ? { message } : undefined;
 }
 
-const isResult = (v: { message: string } | undefined | IntegrateResult): v is IntegrateResult => v !== undefined && 'outcome' in v;
+export const isResult = (v: { message: string } | undefined | IntegrateResult): v is IntegrateResult => v !== undefined && 'outcome' in v;
 
 export function mergeBranch(root: string, name: string, opts: { ffOnly?: boolean } = {}): Promise<IntegrateResult> {
   const repoId = repoIdFor(root);
   return runExclusive<IntegrateResult>(repoId, async () => {
     if (await readOpState(root)) return blocked();
+    clearPending(root);
     const head = await currentBranch(root, repoId);
     if (!head) return bad('HEAD is detached.');
     const found = await branchRef(root, repoId, name);
@@ -121,6 +123,7 @@ export function rebaseOnto(root: string, onto: string): Promise<IntegrateResult>
   const repoId = repoIdFor(root);
   return runExclusive<IntegrateResult>(repoId, async () => {
     if (await readOpState(root)) return blocked();
+    clearPending(root);
     const head = await currentBranch(root, repoId);
     if (!head) return bad('HEAD is detached.');
     let target = onto;
@@ -156,6 +159,7 @@ export function rebaseAbort(root: string): Promise<IntegrateResult> {
   const repoId = repoIdFor(root);
   return runExclusive<IntegrateResult>(repoId, async () => {
     const res = await runGit(['rebase', '--abort'], { cwd: root, repoId, timeoutMs: TIMEOUT_MS, env: NO_EDITOR });
+    if (res.code === 0) clearPending(root); // V4: an aborted interactive rebase / multi cherry-pick is never journaled
     return res.code === 0 ? { outcome: 'done' } : failed(res, 'git rebase --abort failed.');
   });
 }
@@ -172,6 +176,7 @@ export function rebaseSkip(root: string): Promise<IntegrateResult> {
   return runExclusive<IntegrateResult>(repoId, async () => {
     const before = await readOpState(root);
     const res = await runGit(['rebase', '--skip'], { cwd: root, repoId, timeoutMs: TIMEOUT_MS, env: NO_EDITOR });
+    if (res.code === 0) await finishPending(root);
     return res.code === 0 ? { outcome: 'done' } : afterStep(root, res, before?.step, 'git rebase --skip failed.');
   });
 }
@@ -325,6 +330,7 @@ export function rebaseContinue(root: string, opts: { message?: string; step?: nu
       const edited = message !== undefined && message.trim() !== '' && normalise(message) !== normalise(before.message);
       if (edited && !(await writeApplyMessage(root, repoId, message as string))) return failed({ code: 1, stdout: '', stderr: 'The edited message could not be saved.' }, 'The edited message could not be saved.');
       const done = await runGit(['rebase', '--continue'], { cwd: root, repoId, timeoutMs: TIMEOUT_MS, env: NO_EDITOR });
+      if (done.code === 0) await finishPending(root);
       return done.code === 0 ? { outcome: 'done' } : afterStep(root, done, before.step, 'git rebase --continue failed.');
     }
 
@@ -332,10 +338,13 @@ export function rebaseContinue(root: string, opts: { message?: string; step?: nu
     // here first, with the original author. Unchanged (or no) message: git's own text, "#" lines stripped as git does.
     // Edited message: exactly what the user sees, "#" lines kept.
     const edited = message !== undefined && message.trim() !== '' && normalise(message) !== normalise(before.message);
+    const fixupStop = await lastDoneIsFixup(root, repoId);
+    if (edited && fixupStop) return bad('This step is folded into the commit before it, so its message cannot be edited here. Continue without changing the message.');
     const text = edited ? (message as string) : before.message;
     const hasStaged = (await runGit(['diff', '--cached', '--quiet'], { cwd: root, repoId })).code === 1;
     // A cut-off or empty message, or nothing staged: leave it to git itself.
-    if (hasStaged && text.trim() !== '' && (edited || !before.truncated)) {
+    // V4: a stopped fixup / squash line is finished by a plain `--continue` (a commit made by hand here would be a second commit, not the squash).
+    if (hasStaged && text.trim() !== '' && (edited || !before.truncated) && !fixupStop) {
       const rh = await runGit(['rev-parse', '-q', '--verify', 'REBASE_HEAD'], { cwd: root, repoId });
       const sha = rh.stdout.trim();
       if (rh.code !== 0 || !SHA_FULL_RE.test(sha)) return failed(rh, 'REBASE_HEAD was not found.');
@@ -354,6 +363,19 @@ export function rebaseContinue(root: string, opts: { message?: string; step?: nu
     }
 
     const res = await runGit(['rebase', '--continue'], { cwd: root, repoId, timeoutMs: TIMEOUT_MS, env: NO_EDITOR });
+    if (res.code === 0) await finishPending(root);
     return res.code === 0 ? { outcome: 'done' } : afterStep(root, res, before.step, 'git rebase --continue failed.');
   });
+}
+
+/** True when the last line of rebase-merge/done (the step that is stopped) is a fixup or squash. */
+async function lastDoneIsFixup(root: string, repoId: string): Promise<boolean> {
+  const p = await runGit(['rev-parse', '--git-path', 'rebase-merge/done'], { cwd: root, repoId });
+  if (p.code !== 0) return false;
+  try {
+    const lines = (await readFile(resolvePath(root, p.stdout.trim()), 'utf8')).split('\n').map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('#'));
+    return /^(?:fixup|squash|f|s)(?:\s|$)/.test(lines[lines.length - 1] ?? '');
+  } catch {
+    return false;
+  }
 }

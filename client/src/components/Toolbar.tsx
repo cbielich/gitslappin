@@ -78,6 +78,10 @@ interface ToolbarProps {
   onPop?: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
+  /** V6: the Terminal button (show/hide the in-app terminal panel; undefined = disabled), Actions (the palette) and Search (commit search). */
+  onTerminal?: () => void;
+  onActions?: () => void;
+  onSearch?: () => void;
 }
 
 function PullSplit({ remote, onPull, onPick }: { remote: RemoteToolbarState; onPull?: () => void; onPick?: (m: PullMode | 'fetch') => void }) {
@@ -188,7 +192,7 @@ function BranchPicker({ branchName, locals, onPick }: { branchName?: string; loc
   );
 }
 
-export function Toolbar({ repoName, branchName, localBranches, onCheckoutLocal, onBranch, remote, onPull, onPickPullMode, onPush, onStash, onPop, onUndo, onRedo }: ToolbarProps) {
+export function Toolbar({ repoName, branchName, localBranches, onCheckoutLocal, onBranch, remote, onPull, onPickPullMode, onPush, onStash, onPop, onUndo, onRedo, onTerminal, onActions, onSearch }: ToolbarProps) {
   return (
     <div className="toolbar" data-testid="toolbar">
       <div className="toolbar-left">
@@ -235,7 +239,7 @@ export function Toolbar({ repoName, branchName, localBranches, onCheckoutLocal, 
         <ToolButton label="Stash" Icon={Inbox} title="Stash" {...(remote && onStash ? { onClick: onStash } : {})} disabled={!remote?.canStash} />
         <ToolButton label="Pop" Icon={ArchiveRestore} title="Pop Stash" {...(remote && onPop ? { onClick: onPop } : {})} disabled={!remote?.canPop} />
         <span className="toolbar-divider" />
-        <ToolButton label="Terminal" Icon={SquareTerminal} />
+        <ToolButton label="Terminal" Icon={SquareTerminal} {...(onTerminal ? { onClick: onTerminal, title: 'Show/Hide Terminal (Ctrl + `)' } : {})} />
       </div>
       <div className="toolbar-right">
         {remote?.remoteBusy && (
@@ -243,8 +247,8 @@ export function Toolbar({ repoName, branchName, localBranches, onCheckoutLocal, 
             <Loader2 size={16} />
           </span>
         )}
-        <ToolButton label="Actions" Icon={Zap} />
-        <ToolButton label="Search" Icon={Search} />
+        <ToolButton label="Actions" Icon={Zap} title="Command Palette (Ctrl + P)" {...(onActions ? { onClick: onActions } : {})} />
+        <ToolButton label="Search" Icon={Search} {...(onSearch ? { onClick: onSearch } : {})} />
       </div>
     </div>
   );

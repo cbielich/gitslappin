@@ -5,11 +5,12 @@ import { api } from '../api';
 import type { DiffTarget } from '../lib/diffTarget';
 import { formatAuthored, identiconUri, shortSha } from '../lib/identicon';
 import { useListMode } from '../lib/listMode';
+import { RewordEditor } from './RewordEditor';
 
 export type OpenFileHook = (target: DiffTarget) => void;
 
 /** A file in the right-panel list. `status` is null for files the commit did not change ("View all files"). */
-interface ListFile {
+export interface ListFile {
   status: FileStatus | null;
   path: string;
   oldPath?: string;
@@ -39,7 +40,7 @@ interface TreeNode {
   files: ListFile[];
 }
 
-function buildTree(files: ListFile[]): TreeNode {
+export function buildTree(files: ListFile[]): TreeNode {
   const root: TreeNode = { name: '', dirs: new Map(), files: [] };
   for (const f of files) {
     const parts = f.path.split('/');
@@ -54,7 +55,7 @@ function buildTree(files: ListFile[]): TreeNode {
   return root;
 }
 
-function TreeView({ node, depth, onOpen }: { node: TreeNode; depth: number; onOpen: (f: ListFile) => void }) {
+export function TreeView({ node, depth, onOpen }: { node: TreeNode; depth: number; onOpen: (f: ListFile) => void }) {
   return (
     <>
       {[...node.dirs.values()]
@@ -77,7 +78,7 @@ function TreeView({ node, depth, onOpen }: { node: TreeNode; depth: number; onOp
   );
 }
 
-function FileRow({ file, onOpen, indent = 8, nameOnly = false }: { file: ListFile; onOpen: (f: ListFile) => void; indent?: number; nameOnly?: boolean }) {
+export function FileRow({ file, onOpen, indent = 8, nameOnly = false }: { file: ListFile; onOpen: (f: ListFile) => void; indent?: number; nameOnly?: boolean }) {
   return (
     <button
       className={`file-row${file.status === null ? ' unchanged' : ''}`}
@@ -94,7 +95,7 @@ function FileRow({ file, onOpen, indent = 8, nameOnly = false }: { file: ListFil
   );
 }
 
-const SUMMARY: { status: string[]; label: string; id: string }[] = [
+export const SUMMARY: { status: string[]; label: string; id: string }[] = [
   { status: ['M', 'T', 'U'], label: 'modified', id: 'modified' },
   { status: ['A', 'C'], label: 'added', id: 'added' },
   { status: ['D'], label: 'deleted', id: 'deleted' },
@@ -108,9 +109,11 @@ interface CommitProps {
   onViewChanges: () => void;
   onOpenFile: OpenFileHook;
   onJump: (sha: string) => void;
+  /** V4: set when this commit's message may be reworded (HEAD is a branch, nothing is stopped, the commit is on its first-parent line). */
+  reword?: { editing: boolean; isHead: boolean; rebuilt: number; busy: boolean; onStart: () => void; onCancel: () => void; onSave: (message: string) => void };
 }
 
-export function CommitDetails({ repoId, sha, wipTotal, onViewChanges, onOpenFile, onJump }: CommitProps) {
+export function CommitDetails({ repoId, sha, wipTotal, onViewChanges, onOpenFile, onJump, reword }: CommitProps) {
   const [detail, setDetail] = useState<CommitDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useListMode();
@@ -163,7 +166,7 @@ export function CommitDetails({ repoId, sha, wipTotal, onViewChanges, onOpenFile
   };
 
   return (
-    <div className="details" data-testid="commit-details" data-sha={sha}>
+    <div className="details" data-testid="commit-details" data-sha={sha} tabIndex={-1}>
       {wipTotal > 0 && (
         <div className="changes-banner" data-testid="changes-banner">
           <span>
@@ -181,9 +184,17 @@ export function CommitDetails({ repoId, sha, wipTotal, onViewChanges, onOpenFile
       {!detail && !error && <div className="details-loading">Loading...</div>}
       {detail && (
         <>
-          <div className="message-box" data-testid="details-message">
-            {detail.message}
-          </div>
+          {reword && !detail.truncated && reword.editing ? (
+            <RewordEditor message={detail.message} isHead={reword.isHead} rebuilt={reword.rebuilt} busy={reword.busy} onUpdate={reword.onSave} onCancel={reword.onCancel} />
+          ) : (
+            <div
+              className={`message-box${reword && !detail.truncated ? ' rewordable' : ''}`}
+              data-testid="details-message"
+              {...(reword && !detail.truncated ? { onClick: reword.onStart, title: 'Click to reword your commit message' } : {})}
+            >
+              {detail.message}
+            </div>
+          )}
           <div className="message-handle" />
           <div className="author-row">
             <img className="author-avatar" src={identiconUri(detail.authorEmail)} alt="" width={36} height={36} />

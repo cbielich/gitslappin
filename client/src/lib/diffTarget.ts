@@ -5,6 +5,8 @@ export interface DiffTarget {
   source: DiffSource;
   /** Commit sha, for source 'commit'. */
   sha?: string;
+  /** Source 'commit' only: compare against this commit (or 'empty') instead of the first parent. */
+  base?: string;
   path: string;
   oldPath?: string;
   /** Unstaged only: the file is untracked (the whole file shows as added). */
@@ -13,12 +15,13 @@ export interface DiffTarget {
   status: FileStatus | WipFile['status'] | null;
 }
 
-export const diffTargetKey = (t: DiffTarget): string => [t.source, t.sha ?? '', t.path, t.oldPath ?? '', t.untracked ? 1 : 0].join('|');
+export const diffTargetKey = (t: DiffTarget): string => [t.source, t.sha ?? '', t.base ?? '', t.path, t.oldPath ?? '', t.untracked ? 1 : 0].join('|');
 
 export function diffQuery(t: DiffTarget, extra: { full?: boolean; ws?: boolean } = {}): string {
   const q = new URLSearchParams({ source: t.source, path: t.path });
   if (t.oldPath && t.oldPath !== t.path) q.set('oldPath', t.oldPath);
   if (t.sha) q.set('sha', t.sha);
+  if (t.base) q.set('base', t.base);
   if (t.untracked) q.set('untracked', '1');
   if (extra.full) q.set('full', '1');
   if (extra.ws) q.set('ws', '1');

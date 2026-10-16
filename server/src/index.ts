@@ -3,11 +3,17 @@ import { createAutoExit } from './alive';
 import { buildApp } from './app';
 import { loadConfig, startupUrl } from './config';
 import { queryFixedDrives } from './fsList';
+import { GIT_PATH } from './git/runner';
 import { gitVersionProblem } from './git/version';
 import { pendingCount, stopAccepting } from './git/queue';
 import { findLiveInstance, writeLock } from './instance';
 import { launchWindow } from './launcher';
 import { copyLegacyData, defaultDataDirs } from './legacyData';
+
+if (GIT_PATH === '') {
+  console.error('GitSlappin cannot start: git was not found at an absolute location on PATH. Install Git (https://git-scm.com) and make sure its folder is on PATH.');
+  process.exit(1);
+}
 
 const problem = await gitVersionProblem();
 if (problem) {

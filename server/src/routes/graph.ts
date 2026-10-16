@@ -8,6 +8,7 @@ import { COMMIT_FORMAT, SHA_RE, parseCommitMeta, parseNameStatusZ } from '../git
 import { REFS_FORMAT, STASH_FORMAT, parseForEachRef, parseStashList } from '../git/parsers/refs';
 import { parseStatusV2 } from '../git/parsers/status';
 import type { RepoRegistry } from '../state/registry';
+import type { VisibilityStore } from '../visibility';
 
 const DEFAULT_LIMIT = 500;
 /** One request may load up to this many commits (a jump to a far commit loads everything up to it). */
@@ -27,7 +28,7 @@ async function fetchStashes(root: string, repoId: string): Promise<StashInfo[]> 
   return res.code === 0 ? parseStashList(res.stdout) : [];
 }
 
-export function registerGraphRoutes(app: FastifyInstance, registry: RepoRegistry): void {
+export function registerGraphRoutes(app: FastifyInstance, registry: RepoRegistry, visibility: VisibilityStore): void {
   function rootOrFail(id: string, reply: FastifyReply): string | null {
     const root = registry.rootOf(id);
     if (!root) {
@@ -44,7 +45,7 @@ export function registerGraphRoutes(app: FastifyInstance, registry: RepoRegistry
     const limit = clampInt(req.query.limit, 1, MAX_LIMIT, DEFAULT_LIMIT);
     let history;
     try {
-      history = await getHistory(root, req.params.id);
+      history = await getHistory(root, req.params.id, visibility.get(req.params.id));
     } catch (e) {
       return reply.code(500).send({ error: e instanceof Error ? e.message : 'git log failed.' });
     }
@@ -59,7 +60,7 @@ export function registerGraphRoutes(app: FastifyInstance, registry: RepoRegistry
     const { sha } = req.params;
     if (!SHA_RE.test(sha)) return reply.code(400).send({ error: 'Invalid commit id.' });
     try {
-      const history = await getHistory(root, req.params.id);
+      const history = await getHistory(root, req.params.id, visibility.get(req.params.id));
       return { index: history.indexBySha.get(sha.toLowerCase()) ?? -1 } satisfies LocateResult;
     } catch (e) {
       return reply.code(500).send({ error: e instanceof Error ? e.message : 'git log failed.' });
@@ -161,7 +162,7 @@ export function registerGraphRoutes(app: FastifyInstance, registry: RepoRegistry
     searches.set(repoId, ctl);
     const superseded = () => reply.code(409).send({ error: 'Superseded by a newer search.' });
     try {
-      const history = await getHistory(root, repoId);
+      const history = await getHistory(root, repoId, visibility.get(repoId));
       if (ctl.signal.aborted) return superseded();
       const base = ['log', '--fixed-strings', '--regexp-ignore-case', '--format=%H', '--exclude=refs/stash', ...OWN_REF_EXCLUDES, '--all'];
       const opts = { cwd: root, repoId, signal: ctl.signal };

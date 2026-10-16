@@ -50,6 +50,19 @@
   --text-bright: rgba(0, 0, 0, 0.9);
   --text-dimmed: #00000033;
   --text-dimmed-selected: #0000007f;
+  /* V5 blame: one colour per commit, picked from 12 hues (BlameFileView) */
+  --blame-0: hsl(0, 65%, 55%);
+  --blame-1: hsl(30, 65%, 55%);
+  --blame-2: hsl(60, 65%, 55%);
+  --blame-3: hsl(90, 65%, 55%);
+  --blame-4: hsl(120, 65%, 55%);
+  --blame-5: hsl(150, 65%, 55%);
+  --blame-6: hsl(180, 65%, 55%);
+  --blame-7: hsl(210, 65%, 55%);
+  --blame-8: hsl(240, 65%, 55%);
+  --blame-9: hsl(270, 65%, 55%);
+  --blame-10: hsl(300, 65%, 55%);
+  --blame-11: hsl(330, 65%, 55%);
   --text-selected-row: #000000;
 
   --gkftux-blue: #5380ea;
@@ -154,4 +167,29 @@
   --section-border: rgba(0, 0, 0, 0.2);
   --input__bg: rgba(0, 0, 0, 0.2);
   --link-color: #005c95;
+}
+
+/* V6b in-app terminal (terminal__* from light.jsonc-default; LESS functions pre-computed). */
+[data-theme='light'] {
+  --terminal__background: var(--panel__bg0);
+  --terminal__cursor: var(--blue);
+  --terminal__cursorAccent: var(--panel__bg0);
+  --terminal__foreground: #2e3440;
+  --terminal__selection: #4d88ff26;
+  --terminal__black: #2e3440;
+  --terminal__red: #c03030;
+  --terminal__green: #198844;
+  --terminal__yellow: #946800;
+  --terminal__blue: #2563eb;
+  --terminal__magenta: #9b3d9b;
+  --terminal__cyan: #0e8a9e;
+  --terminal__white: #d8dee9;
+  --terminal__brightBlack: #4c566a;
+  --terminal__brightRed: #d94848;
+  --terminal__brightGreen: #23a55a;
+  --terminal__brightYellow: #b17d00;
+  --terminal__brightBlue: #3b7cf5;
+  --terminal__brightMagenta: #b852b8;
+  --terminal__brightCyan: #129db4;
+  --terminal__brightWhite: #eceff4;
 }

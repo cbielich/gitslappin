@@ -13,7 +13,7 @@ const MAX_CHANGED_LINES = 2000;
 const FULL_DIFF_MAX_BYTES = 20 * 1024 * 1024;
 const FULL_DIFF_TIMEOUT_MS = 60_000;
 const CONTENT_MAX_BYTES = 5 * 1024 * 1024;
-const SOURCES: readonly string[] = ['commit', 'unstaged', 'staged', 'stash'];
+const SOURCES: readonly string[] = ['commit', 'unstaged', 'staged', 'stash', 'workdir'];
 const STASH_SHA = /^[0-9a-f]{40,64}$/;
 
 interface DiffQuery {
@@ -21,6 +21,7 @@ interface DiffQuery {
   path?: string;
   oldPath?: string;
   sha?: string;
+  base?: string;
   full?: string;
   untracked?: string;
   ws?: string;
@@ -40,6 +41,8 @@ interface Parsed {
   path: string;
   oldPath?: string;
   sha?: string;
+  /** Commit source only: compare against this commit (or the literal "empty") instead of the first parent. */
+  base?: string;
   full: boolean;
   untracked: boolean;
   ws: boolean;
@@ -63,7 +66,9 @@ export function registerDiffRoutes(app: FastifyInstance, registry: RepoRegistry)
     const oldPath = str(q.oldPath);
     if (oldPath !== undefined) safeRepoPath(root, oldPath);
     const sha = str(q.sha);
-    if (source === 'commit' && (!sha || !SHA_RE.test(sha))) throw new HttpError(400, 'Invalid commit id.');
+    if ((source === 'commit' || source === 'workdir') && (!sha || !(SHA_RE.test(sha) || (source === 'workdir' && sha === 'empty')))) throw new HttpError(400, 'Invalid commit id.');
+    const base = str(q.base);
+    if (base !== undefined && (source !== 'commit' || (base !== 'empty' && !SHA_RE.test(base)))) throw new HttpError(400, 'Invalid commit id.');
     if (source === 'stash' && (!sha || !STASH_SHA.test(sha))) throw new HttpError(400, 'Invalid stash.');
     const untracked = q.untracked === '1';
     if (untracked && source !== 'unstaged') throw new HttpError(400, 'Invalid request.');
@@ -71,7 +76,8 @@ export function registerDiffRoutes(app: FastifyInstance, registry: RepoRegistry)
       source: source as DiffSource,
       path,
       ...(oldPath !== undefined ? { oldPath } : {}),
-      ...((source === 'commit' || source === 'stash') && sha ? { sha } : {}),
+      ...((source === 'commit' || source === 'stash' || source === 'workdir') && sha ? { sha } : {}),
+      ...(base !== undefined ? { base } : {}),
       full: q.full === '1',
       untracked,
       ws: q.ws === '1',
@@ -92,14 +98,29 @@ export function registerDiffRoutes(app: FastifyInstance, registry: RepoRegistry)
     return res.code === 0 && /^[0-9a-f]{40,64}$/.test(p) ? p : null;
   }
 
-  /** HEAD, or the empty tree when HEAD is unborn (works for SHA-1 and SHA-256 repos). */
-  async function headOrEmptyTree(root: string, repoId: string): Promise<string> {
-    const head = await runGit(['rev-parse', '--verify', '--quiet', 'HEAD'], { cwd: root, repoId });
-    if (head.code === 0 && head.stdout.trim()) return head.stdout.trim();
-    const empty = await runGit(['hash-object', '-t', 'tree', '--stdin'], { cwd: root, repoId });
+  /** The empty tree id (works for SHA-1 and SHA-256 repos). */
+  async function emptyTree(root: string, repoId: string): Promise<string> {
+    const empty = await runGit(['hash-object', '-t', 'tree', '--stdin'], { cwd: root, repoId, input: '' });
     const id = empty.stdout.trim();
     if (empty.code !== 0 || !/^[0-9a-f]{40,64}$/.test(id)) throw new HttpError(500, 'Could not read the repository.');
     return id;
+  }
+
+  /** HEAD, or the empty tree when HEAD is unborn. */
+  async function headOrEmptyTree(root: string, repoId: string): Promise<string> {
+    const head = await runGit(['rev-parse', '--verify', '--quiet', 'HEAD'], { cwd: root, repoId });
+    if (head.code === 0 && head.stdout.trim()) return head.stdout.trim();
+    return emptyTree(root, repoId);
+  }
+
+  /** A workdir diff may only read tracked files (an ignored .env or an untracked file is refused); a file that is gone from the folder is fine. */
+  async function assertTrackedOrGone(root: string, repoId: string, path: string): Promise<void> {
+    try {
+      await indexConflicted(root, repoId, path);
+    } catch (e) {
+      if (!(e instanceof HttpError)) throw e;
+      if (assertWorkingTreeFile(root, safeRepoPath(root, path))) throw e;
+    }
   }
 
   async function assertUntracked(root: string, repoId: string, path: string): Promise<void> {
@@ -140,8 +161,16 @@ export function registerDiffRoutes(app: FastifyInstance, registry: RepoRegistry)
   /** Builds the git args for `mode` (['-p'] for the patch, numstat / name-status with -z for stats). */
   async function buildArgs(root: string, repoId: string, r: Parsed, mode: readonly string[]): Promise<string[]> {
     const flags = ['--no-ext-diff', '--no-textconv', '--no-color', ...(r.ws ? ['-b'] : [])];
+    if (r.source === 'workdir') {
+      const sha = r.sha === 'empty' ? await emptyTree(root, repoId) : await resolveCommit(root, repoId, r.sha as string); // 'empty' (a root-chain compare) is the empty tree, never given to rev-parse
+      return ['--literal-pathspecs', 'diff', ...mode, '-M', ...flags, '--end-of-options', sha, '--', ...pathspecs(r)];
+    }
     if (r.source === 'commit') {
       const sha = await resolveCommit(root, repoId, r.sha as string);
+      if (r.base !== undefined) {
+        const base = r.base === 'empty' ? await emptyTree(root, repoId) : await resolveCommit(root, repoId, r.base);
+        return ['--literal-pathspecs', 'diff-tree', '-r', ...mode, '-M', '--no-commit-id', ...flags, '--end-of-options', base, sha, '--', ...pathspecs(r)];
+      }
       const parent = await firstParent(root, repoId, sha);
       return [
         '--literal-pathspecs',
@@ -188,7 +217,7 @@ export function registerDiffRoutes(app: FastifyInstance, registry: RepoRegistry)
   }
 
   function checkWorkingFile(root: string, r: Parsed): void {
-    if (r.source === 'unstaged') assertWorkingTreeFile(root, safeRepoPath(root, r.path));
+    if (r.source === 'unstaged' || r.source === 'workdir') assertWorkingTreeFile(root, safeRepoPath(root, r.path));
   }
 
   /** The real status for the fallback and too-large answers (never a guessed one). */
@@ -210,6 +239,7 @@ export function registerDiffRoutes(app: FastifyInstance, registry: RepoRegistry)
     try {
       const r = parse(root, req.query);
       checkWorkingFile(root, r);
+      if (r.source === 'workdir') await assertTrackedOrGone(root, repoId, r.path);
       const base = { path: r.path, ...(r.oldPath !== undefined && r.oldPath !== r.path ? { oldPath: r.oldPath } : {}) };
       // An unstaged diff of a tracked file needs the path in the index; an unmerged path has no diff.
       if (r.source === 'unstaged' && !r.untracked && (await indexConflicted(root, repoId, r.path))) {
@@ -285,9 +315,14 @@ export function registerDiffRoutes(app: FastifyInstance, registry: RepoRegistry)
       const oldPath = r.oldPath ?? r.path;
       let before: string | null;
       let after: string | null;
-      if (r.source === 'commit') {
+      if (r.source === 'workdir') {
+        const sha = r.sha === 'empty' ? null : await resolveCommit(root, repoId, r.sha as string);
+        await assertTrackedOrGone(root, repoId, r.path);
+        before = sha ? await readObject(root, repoId, `${sha}:${oldPath}`) : null;
+        after = readWorkingFile(root, r.path);
+      } else if (r.source === 'commit') {
         const sha = await resolveCommit(root, repoId, r.sha as string);
-        const parent = await firstParent(root, repoId, sha);
+        const parent = r.base === undefined ? await firstParent(root, repoId, sha) : r.base === 'empty' ? null : await resolveCommit(root, repoId, r.base);
         before = parent ? await readObject(root, repoId, `${parent}:${oldPath}`) : null;
         after = await readObject(root, repoId, `${sha}:${r.path}`);
       } else if (r.source === 'stash') {

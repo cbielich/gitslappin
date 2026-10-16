@@ -829,3 +829,138 @@
   height: 30px;
   background: var(--panel__bg1);
 }
+
+/* V2: the green "+" on the REMOTE section head (shown while the pointer is over the section), and the Add Remote panel (screen 38) */
+.sb-section-headrow {
+  position: relative;
+}
+
+.sb-add {
+  position: absolute;
+  top: 50%;
+  right: 34px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--green);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.sb-section:hover .sb-add,
+.sb-add:focus-visible {
+  opacity: 1;
+}
+
+.sb-add:hover {
+  background: var(--glass-inverse-5);
+}
+
+.add-remote-panel {
+  position: absolute;
+  top: 64px;
+  left: 232px;
+  z-index: 40;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  background: var(--panel__bg0);
+  border: 1px solid var(--section-border);
+  border-radius: 4px;
+  box-shadow: var(--menu-shadow);
+  color: var(--text-normal);
+}
+
+.add-remote-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: var(--text-selected);
+}
+
+.add-remote-tabs {
+  display: flex;
+  gap: 12px;
+  border-bottom: 1px solid var(--section-border);
+  margin-bottom: 4px;
+}
+
+.add-remote-tab {
+  padding: 4px 0;
+  font-size: var(--fs-2);
+  color: var(--text-secondary);
+}
+
+.add-remote-tab.active {
+  color: var(--text-selected);
+  border-bottom: 2px solid var(--blue);
+}
+
+.add-remote-label {
+  font-size: var(--fs-2);
+  color: var(--text-secondary);
+}
+
+.add-remote-input {
+  padding: 4px 6px;
+  background: var(--app__bg0);
+  color: var(--text-normal);
+  border: 1px solid var(--section-border);
+  border-radius: 3px;
+}
+
+.add-remote-submit {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--green);
+  color: var(--app__bg0);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-remote-submit:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Hovering the ref cell shows every ref pill (GitKraken); the row rises above the rows below it. */
+.commit-row.ref-expanded {
+  z-index: 6;
+}
+
+.cell-ref.expanded {
+  overflow: visible;
+}
+
+.ref-pills-all {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  max-width: 420px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--app__bg0);
+  box-shadow: 0 2px 8px var(--card-shadow);
+}
+
+.ref-pills-all .ref-pill {
+  max-width: 100%;
+}

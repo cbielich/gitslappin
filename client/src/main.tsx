@@ -17,6 +17,10 @@ import './styles/menu.css';
 import './styles/conflict.css';
 import './styles/merge.css';
 import './styles/polish.css';
+import './styles/rewrite.css';
+import './styles/viewing.css';
+import './styles/palette.css';
+import './styles/terminal.css';
 
 startAlive();
 

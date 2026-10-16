@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
-import type { LogCommit, StashInfo } from '@gitslappin/shared';
+import type { GraphVisibility, LogCommit, StashInfo } from '@gitslappin/shared';
 import { runGit } from './runner';
 import { isOwnRef, OWN_REF_EXCLUDES } from './ownRefs';
 import { LOG_FORMAT, parseLog } from './parsers/log';
 import { STASH_FORMAT, parseStashList } from './parsers/refs';
+import { buildVisibleView } from './visibleView';
+import { isNoVisibility } from '../visibility';
 
 /** Ordered graph commits of one repo (`git log --all --date-order`), cached until the refs change. */
 export interface History {
@@ -15,10 +17,12 @@ export interface History {
 interface Entry {
   fingerprint: string;
   promise: Promise<History>;
+  views: Map<string, History>;
 }
 
 const cache = new Map<string, Entry>();
 const HISTORY_TIMEOUT_MS = 300_000;
+const MAX_VIEWS = 8;
 
 const sha1 = (s: string): string => createHash('sha1').update(s).digest('hex');
 
@@ -56,16 +60,28 @@ async function build(root: string, repoId: string, fingerprint: string, empty: b
   return { fingerprint, commits, indexBySha: new Map(commits.map((c, i) => [c.sha, i])) };
 }
 
-/** Returns the cached history, rebuilding it (one git log walk) only when the refs fingerprint changed. */
-export async function getHistory(root: string, repoId: string): Promise<History> {
+/** Returns the cached history, rebuilding it (one git log walk) only when the refs fingerprint changed. A visibility value gives the in-memory hide/solo view of that walk (no git). */
+export async function getHistory(root: string, repoId: string, vis?: GraphVisibility): Promise<History> {
   const { fingerprint, empty, stashes } = await refsFingerprint(root, repoId);
-  const hit = cache.get(repoId);
-  if (hit && hit.fingerprint === fingerprint) return hit.promise;
-  const promise = build(root, repoId, fingerprint, empty, stashes);
-  const entry: Entry = { fingerprint, promise };
-  cache.set(repoId, entry);
-  promise.catch(() => {
-    if (cache.get(repoId) === entry) cache.delete(repoId);
-  });
-  return promise;
+  let entry = cache.get(repoId);
+  if (!entry || entry.fingerprint !== fingerprint) {
+    const promise = build(root, repoId, fingerprint, empty, stashes);
+    const fresh: Entry = { fingerprint, promise, views: new Map() };
+    entry = fresh;
+    cache.set(repoId, fresh);
+    promise.catch(() => {
+      if (cache.get(repoId) === fresh) cache.delete(repoId);
+    });
+  }
+  const full = await entry.promise;
+  if (!vis || isNoVisibility(vis)) return full;
+  const key = sha1(JSON.stringify([vis.hidden, vis.solo, vis.hideStashes]));
+  let view = entry.views.get(key);
+  if (!view) {
+    const commits = buildVisibleView(full.commits, vis);
+    view = { fingerprint: full.fingerprint, commits, indexBySha: new Map(commits.map((c, i) => [c.sha, i])) };
+    if (entry.views.size >= MAX_VIEWS) entry.views.delete(entry.views.keys().next().value as string);
+    entry.views.set(key, view);
+  }
+  return view;
 }

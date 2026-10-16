@@ -78,9 +78,25 @@ export function stopAccepting(): void {
   closed = true;
 }
 
-/** Runs fn after all earlier mutations for the same repo have settled. `keepRedo` is only for the undo / redo step itself. */
-export function runExclusive<T>(repoId: string, fn: () => Promise<T>, opts: { keepRedo?: boolean } = {}): Promise<T> {
+/** Background work (the V2 auto-fetch) that must give way when a user action wants the same repo's lock. */
+const yielders = new Map<string, Set<() => void>>();
+export function registerYield(repoId: string, abort: () => void): () => void {
+  const set = yielders.get(repoId) ?? new Set();
+  set.add(abort);
+  yielders.set(repoId, set);
+  return () => {
+    set.delete(abort);
+    if (set.size === 0 && yielders.get(repoId) === set) yielders.delete(repoId);
+  };
+}
+
+/**
+ * Runs fn after all earlier mutations for the same repo have settled. `keepRedo` is only for the undo / redo step itself and for
+ * background work. `background` marks the V2 auto-fetch: every other caller first asks registered background work for this repo to abort.
+ */
+export function runExclusive<T>(repoId: string, fn: () => Promise<T>, opts: { keepRedo?: boolean; background?: boolean } = {}): Promise<T> {
   if (closed) return Promise.reject(new Error('GitSlappin is shutting down.'));
+  if (!opts.background) for (const abort of [...(yielders.get(repoId) ?? [])]) abort();
   pending++;
   busy.set(repoId, (busy.get(repoId) ?? 0) + 1);
   const prev = tails.get(repoId) ?? Promise.resolve();

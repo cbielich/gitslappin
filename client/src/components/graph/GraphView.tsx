@@ -5,12 +5,17 @@ import { formatAuthored, shortSha } from '../../lib/identicon';
 import { readJson, writeJson } from '../../lib/storage';
 import { LaneSvg, MID_Y, NODE_R, ROW_H, WipSvg, laneVar, laneX } from './LaneSvg';
 import type { MenuCtx } from '../../lib/refMenu';
+import type { RowRef, Selection } from '../../lib/selection';
 import { BranchInput } from './BranchInput';
 import { groupRefs, type Pill } from './refPills';
+import { branchDndProps } from '../../lib/branchDnd';
+import type { DropRef } from '../../lib/dropMenu';
+
+export type BranchDrop = (x: number, y: number, src: DropRef, dst: DropRef) => void;
 
 export type MenuRequest = Omit<MenuCtx, 'head'>;
 
-export type Selection = { kind: 'wip' } | { kind: 'commit'; sha: string } | { kind: 'stash'; sha: string };
+export type { Selection } from '../../lib/selection';
 export interface ScrollTarget {
   /** A commit sha, or 'wip' for the WIP row. */
   sha: string;
@@ -37,6 +42,12 @@ function loadColumns(): Columns {
   return { author: v?.author === true, date: v?.date === true, sha: v?.sha === true };
 }
 
+/** Shift / Ctrl held during a row click (V4 multi select). */
+export interface ClickMods {
+  shift: boolean;
+  ctrl: boolean;
+}
+
 interface RowProps {
   row: GraphRow;
   commit: LogCommit;
@@ -45,9 +56,10 @@ interface RowProps {
   selected: boolean;
   match: boolean;
   cols: Columns;
-  onSelect: (sha: string, stash: boolean) => void;
+  onSelect: (sha: string, stash: boolean, mods: ClickMods) => void;
   onMenu: (x: number, y: number, ctx: MenuRequest) => void;
   onPillOpen: (p: Pill) => void;
+  onBranchDrop: BranchDrop;
   /** This row shows the inline new-branch input. */
   creating: boolean;
   /** The typed name (kept by the parent) while `creating`. */
@@ -57,52 +69,69 @@ interface RowProps {
   onCreateCancel: () => void;
 }
 
-const CommitRow = memo(function CommitRow({ row, commit, index, top, selected, match, cols, onSelect, onMenu, onPillOpen, creating, creatingName, onCreateName, onCreateSubmit, onCreateCancel }: RowProps) {
+const CommitRow = memo(function CommitRow({ row, commit, index, top, selected, match, cols, onSelect, onMenu, onPillOpen, onBranchDrop, creating, creatingName, onCreateName, onCreateSubmit, onCreateCancel }: RowProps) {
   const pills = groupRefs(commit.refs);
   const first = pills[0];
   const extra = pills.slice(1);
   const current = commit.refs.some((r) => r.current);
+  const [hover, setHover] = useState(false);
+  const expanded = hover && extra.length > 0 && !creating; // GitKraken: hovering the ref cell / "+N" shows every ref pill
+  const renderPill = (p: (typeof pills)[number]) => (
+    <span
+      key={p.key}
+      className={`ref-pill${p.current ? ' current' : ''}`}
+      data-testid="ref-pill"
+      data-name={p.label}
+      title={p.title}
+      onDoubleClick={() => onPillOpen(p)}
+      {...((p.localName ?? p.remoteNames[0]) ? branchDndProps(
+        { name: (p.localName ?? p.remoteNames[0]) as string, kind: p.localName ? 'local' : 'remote' },
+        onBranchDrop,
+        (p.localName ? p.remoteNames : p.remoteNames.slice(1)).map((n): DropRef => ({ name: n, kind: 'remote' })),
+      ) : {})}
+      onContextMenu={(e) => {
+        const name = p.localName ?? p.remoteNames[0];
+        if (!name) {
+          // V2: a tag label opens the tag menu (the tag group, then the commit-row items); the detached HEAD uses the row menu.
+          if (p.tag) {
+            e.preventDefault();
+            e.stopPropagation();
+            onMenu(e.clientX, e.clientY, { target: 'row', sha: commit.sha, tag: { name: p.label } });
+          }
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        onMenu(e.clientX, e.clientY, { target: 'pill', sha: commit.sha, branch: { name, local: !!p.localName, remote: p.remoteNames.length > 0, current: p.current } });
+      }}
+    >
+      {p.current && <Check size={11} />}
+      <span className="ref-pill-name">{p.label}</span>
+      {p.local && <Laptop size={11} />}
+      {p.remote && <Cloud size={11} />}
+      {p.tag && <Tag size={11} />}
+    </span>
+  );
   const style = { top, '--lane': laneVar(row.color) } as CSSProperties;
   return (
     <div
-      className={`commit-row${selected ? ' selected' : ''}${match ? ' match' : ''}${row.stash ? ' stash' : ''}`}
+      className={`commit-row${selected ? ' selected' : ''}${match ? ' match' : ''}${row.stash ? ' stash' : ''}${expanded ? ' ref-expanded' : ''}`}
       style={style}
       data-testid="commit-row"
       data-sha={commit.sha}
       data-selected={selected}
       data-match={match}
       data-stash={row.stash ? 'true' : undefined}
-      onClick={() => onSelect(commit.sha, row.stash)}
+      onClick={(e) => onSelect(commit.sha, row.stash, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })}
       onContextMenu={(e) => {
         e.preventDefault();
         onMenu(e.clientX, e.clientY, { target: row.stash ? 'stash' : 'row', sha: commit.sha });
       }}
     >
-      <div className={`cell cell-ref${creating ? ' creating' : ''}`}>
+      <div className={`cell cell-ref${creating ? ' creating' : ''}${expanded ? ' expanded' : ''}`} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
         {creating && <BranchInput value={creatingName} onChange={onCreateName} onSubmit={onCreateSubmit} onCancel={onCreateCancel} />}
-        {!creating && first && (
-          <span
-            className={`ref-pill${first.current ? ' current' : ''}`}
-            data-testid="ref-pill"
-            data-name={first.label}
-            title={first.title}
-            onDoubleClick={() => onPillOpen(first)}
-            onContextMenu={(e) => {
-              const name = first.localName ?? first.remoteNames[0];
-              if (!name) return; // tags and the detached HEAD use the row menu
-              e.preventDefault();
-              e.stopPropagation();
-              onMenu(e.clientX, e.clientY, { target: 'pill', sha: commit.sha, branch: { name, local: !!first.localName, remote: first.remoteNames.length > 0, current: first.current } });
-            }}
-          >
-            {first.current && <Check size={11} />}
-            <span className="ref-pill-name">{first.label}</span>
-            {first.local && <Laptop size={11} />}
-            {first.remote && <Cloud size={11} />}
-            {first.tag && <Tag size={11} />}
-          </span>
-        )}
-        {!creating && extra.length > 0 && (
+        {!creating && (expanded ? <span className="ref-pills-all">{pills.map(renderPill)}</span> : first && renderPill(first))}
+        {!creating && !expanded && extra.length > 0 && (
           <span
             className="ref-more"
             data-testid="ref-more"
@@ -156,7 +185,7 @@ export function conflictBannerText(count: number, into: string): string {
   return count === 1 ? `A file conflict was found when attempting to merge into ${into}` : `${count} file conflicts were found when attempting to merge into ${into}`;
 }
 
-function WipRow({ wip, lane, linked, selected, top, cols, message, onMessage, onSelect }: { wip: StatusSummary; lane: number; linked: boolean; selected: boolean; top: number; cols: Columns; message: string; onMessage: (v: string) => void; onSelect: () => void }) {
+function WipRow({ wip, lane, linked, selected, top, cols, message, onMessage, onSelect }: { wip: StatusSummary; lane: number; linked: boolean; selected: boolean; top: number; cols: Columns; message: string; onMessage: (v: string) => void; onSelect: (mods: ClickMods) => void }) {
   const added = wip.added + wip.untracked;
   if (wip.op && wip.conflicted > 0) {
     // The amber bar of the conflict screen replaces the WIP message box (reference 08b / 14b).
@@ -167,7 +196,7 @@ function WipRow({ wip, lane, linked, selected, top, cols, message, onMessage, on
         data-testid="op-banner"
         data-selected={selected}
         role="button"
-        onClick={onSelect}
+        onClick={(e) => onSelect({ shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })}
       >
         <div className="cell cell-ref" />
         <div className="cell cell-graph">
@@ -189,7 +218,7 @@ function WipRow({ wip, lane, linked, selected, top, cols, message, onMessage, on
       style={{ top, '--lane': laneVar(0) } as CSSProperties}
       data-testid="wip-row"
       data-selected={selected}
-      onClick={onSelect}
+      onClick={(e) => onSelect({ shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })}
     >
       <div className="cell cell-ref" />
       <div className="cell cell-graph">
@@ -232,7 +261,8 @@ interface Props {
   wip: StatusSummary | null;
   headSha: string | null;
   selected: Selection | null;
-  onSelect: (sel: Selection) => void;
+  /** A row was clicked. `rows` = the loaded rows top to bottom (the WIP row first when shown), for the Shift range. */
+  onSelect: (click: { row: RowRef; shift: boolean; ctrl: boolean }, rows: RowRef[]) => void;
   matches: Set<string>;
   scrollTarget: ScrollTarget | null;
   /** The commit summary typed in the WIP row (shared with the commit box). */
@@ -240,6 +270,7 @@ interface Props {
   onWipMessage: (v: string) => void;
   onMenu: (x: number, y: number, ctx: MenuRequest) => void;
   onPillOpen: (p: Pill) => void;
+  onBranchDrop: BranchDrop;
   /** Sha of the row that shows the inline new-branch input. */
   creatingSha: string | null;
   creatingName: string;
@@ -248,7 +279,7 @@ interface Props {
   onCreateCancel: () => void;
 }
 
-export function GraphView({ rows, commits, hasMore, loading, error, loadMore, onRetry, indexOf, wip, headSha, selected, onSelect, matches, scrollTarget, wipMessage, onWipMessage, onMenu, onPillOpen, creatingSha, creatingName, onCreateName, onCreateSubmit, onCreateCancel }: Props) {
+export function GraphView({ rows, commits, hasMore, loading, error, loadMore, onRetry, indexOf, wip, headSha, selected, onSelect, matches, scrollTarget, wipMessage, onWipMessage, onMenu, onPillOpen, onBranchDrop, creatingSha, creatingName, onCreateName, onCreateSubmit, onCreateCancel }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewH, setViewH] = useState(600);
@@ -319,7 +350,14 @@ export function GraphView({ rows, commits, hasMore, loading, error, loadMore, on
     writeJson(COLUMNS_KEY, next);
   };
 
-  const onSelectSha = useCallback((sha: string, stash: boolean) => onSelect({ kind: stash ? 'stash' : 'commit', sha }), [onSelect]);
+  const rowRefs = useMemo((): RowRef[] => {
+    const list: RowRef[] = rows.map((r, i) => ({ kind: r.stash ? 'stash' : 'commit', sha: commits[i]?.sha ?? '' }));
+    return wipVisible ? [{ kind: 'wip' }, ...list] : list;
+  }, [rows, commits, wipVisible]);
+  const rowRefsRef = useRef(rowRefs);
+  rowRefsRef.current = rowRefs;
+  const onSelectSha = useCallback((sha: string, stash: boolean, mods: ClickMods) => onSelect({ row: { kind: stash ? 'stash' : 'commit', sha }, ...mods }, rowRefsRef.current), [onSelect]);
+  const multiShas = useMemo(() => new Set(selected?.kind === 'multi' ? selected.shas : []), [selected]);
 
   const headIdx = headSha ? indexOf(headSha) : -1;
   const headLane = useMemo(() => (headIdx >= 0 ? (rows[headIdx]?.lane ?? 0) : 0), [headIdx, rows]);
@@ -343,7 +381,7 @@ export function GraphView({ rows, commits, hasMore, loading, error, loadMore, on
   for (let i = start; i < end; i++) {
     const top = i * ROW_H;
     if (wipVisible && i === 0 && wip) {
-      items.push(<WipRow key="wip" wip={wip} lane={headLane} linked={wipLinkTo > 0} selected={selected?.kind === 'wip'} top={top} cols={cols} message={wipMessage} onMessage={onWipMessage} onSelect={() => onSelect({ kind: 'wip' })} />);
+      items.push(<WipRow key="wip" wip={wip} lane={headLane} linked={wipLinkTo > 0} selected={selected?.kind === 'wip' || (selected?.kind === 'multi' && selected.wip)} top={top} cols={cols} message={wipMessage} onMessage={onWipMessage} onSelect={(mods) => onSelect({ row: { kind: 'wip' }, ...mods }, rowRefsRef.current)} />);
       continue;
     }
     const ci = i - offset;
@@ -357,12 +395,13 @@ export function GraphView({ rows, commits, hasMore, loading, error, loadMore, on
         commit={commit}
         index={ci}
         top={top}
-        selected={(selected?.kind === 'commit' || selected?.kind === 'stash') && selected.sha === commit.sha}
+        selected={((selected?.kind === 'commit' || selected?.kind === 'stash') && selected.sha === commit.sha) || multiShas.has(commit.sha)}
         match={matches.has(commit.sha)}
         cols={cols}
         onSelect={onSelectSha}
         onMenu={onMenu}
         onPillOpen={onPillOpen}
+        onBranchDrop={onBranchDrop}
         creating={creatingSha === commit.sha}
         creatingName={creatingSha === commit.sha ? creatingName : ''}
         onCreateName={onCreateName}

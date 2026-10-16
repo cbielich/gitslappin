@@ -1,0 +1,87 @@
+[
+  {
+    "id": "bsd-2-clause-simplified-license",
+    "title": "BSD 2-clause \"Simplified\" License",
+    "source": "http://opensource.org/licenses/BSD-2-Clause"
+  },
+  {
+    "id": "bsd-3-clause-new-or-revised-license",
+    "title": "BSD 3-clause \"New\" or \"Revised\" License",
+    "source": "http://opensource.org/licenses/BSD-3-Clause"
+  },
+  {
+    "id": "isc-license",
+    "title": "ISC License",
+    "source": "http://opensource.org/licenses/isc-license"
+  },
+  {
+    "id": "creative-commons-zero-v1.0-universal",
+    "title": "Creative Commons Zero v1.0 Universal",
+    "source": "http://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  {
+    "id": "gnu-general-public-license-v2.0",
+    "title": "GNU General Public License v2.0",
+    "source": "http://www.gnu.org/licenses/gpl-2.0.txt"
+  },
+  {
+    "id": "sil-open-font-license-1.1",
+    "title": "SIL Open Font License 1.1",
+    "source": "http://scripts.sil.org/OFL_web"
+  },
+  {
+    "id": "open-software-license-3.0",
+    "title": "Open Software License 3.0",
+    "source": "http://opensource.org/licenses/OSL-3.0"
+  },
+  {
+    "id": "mit-license",
+    "title": "MIT License",
+    "source": "http://opensource.org/licenses/MIT"
+  },
+  {
+    "id": "gnu-affero-general-public-license-v3.0",
+    "title": "GNU Affero General Public License v3.0",
+    "source": "http://www.gnu.org/licenses/agpl-3.0.txt"
+  },
+  {
+    "id": "gnu-general-public-license-v3.0",
+    "title": "GNU General Public License v3.0",
+    "source": "http://www.gnu.org/licenses/gpl-3.0.txt"
+  },
+  {
+    "id": "apache-license-2.0",
+    "title": "Apache License 2.0",
+    "source": "http://www.apache.org/licenses/LICENSE-2.0.html"
+  },
+  {
+    "id": "mozilla-public-license-2.0",
+    "title": "Mozilla Public License 2.0",
+    "source": "http://www.mozilla.org/MPL/2.0/"
+  },
+  {
+    "id": "eclipse-public-license-1.0",
+    "title": "Eclipse Public License 1.0",
+    "source": "http://www.eclipse.org/legal/epl-v10.html"
+  },
+  {
+    "id": "gnu-lesser-general-public-license-v2.1",
+    "title": "GNU Lesser General Public License v2.1",
+    "source": "http://www.gnu.org/licenses/lgpl-2.1.txt"
+  },
+  {
+    "id": "artistic-license-2.0",
+    "title": "Artistic License 2.0",
+    "source": "http://www.perlfoundation.org/attachment/legal/artistic-2_0.txt"
+  },
+  {
+    "id": "the-unlicense",
+    "title": "The Unlicense",
+    "source": "http://unlicense.org/UNLICENSE"
+  },
+  {
+    "id": "gnu-lesser-general-public-license-v3.0",
+    "title": "GNU Lesser General Public License v3.0",
+    "source": "http://www.gnu.org/licenses/lgpl-3.0.txt"
+  }
+]

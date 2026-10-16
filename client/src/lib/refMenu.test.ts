@@ -34,7 +34,7 @@ describe('refMenu ITEMS table', () => {
   it('has unique ids and a ContextMenu- string key per item', () => {
     const ids = ITEMS.map((i) => i.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const i of ITEMS) expect(i.key).toMatch(/^ContextMenu-/);
+    for (const i of ITEMS) expect(i.key).toMatch(/^(ContextMenu-|SoloBranch$|LeftPanel-StopSoloing$)/); // the solo items use GitKraken's own keys (phase 11, build-notes)
   });
 
   it('lists the phase 5 items', () => {

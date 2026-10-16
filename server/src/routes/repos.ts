@@ -12,6 +12,8 @@ import { RepoRegistry, repoIdFor, repoInfoFor } from '../state/registry';
 
 const MAX_RECENT = 20;
 
+export type OpenRepoAt = (input: string) => Promise<{ info: RepoInfo } | { error: string; status: number }>;
+
 function isDir(p: string): boolean {
   try {
     return statSync(p).isDirectory();
@@ -57,9 +59,28 @@ export function registerRepoRoutes(
   tabs: JsonStore<TabsState>,
   roots: string[] = [],
   pathMap: PathPair[] = [],
-): void {
+): OpenRepoAt {
   const outside = 'That folder is outside the folders GitSlappin may open.';
   let tabsQueue: Promise<void> = Promise.resolve();
+
+  /** The checks and bookkeeping of "open": existence, roots, git top level, registry and recent list. `input` is already mapped and not UNC. */
+  async function openRepoAt(input: string): Promise<{ info: RepoInfo } | { error: string; status: number }> {
+    const path = resolve(input);
+    if (!isUnderRoots(path, roots)) return { status: 400, error: outside };
+    if (!existsSync(path)) return { status: 400, error: `Path does not exist: ${path}` };
+    if (!isDir(path)) return { status: 400, error: `Not a folder: ${path}` };
+
+    const res = await runGit(['rev-parse', '--show-toplevel'], { cwd: path });
+    if (res.code === -1) return { status: 500, error: `Could not run git: ${res.stderr.trim()}` };
+    if (res.code !== 0 || !res.stdout.trim()) return { status: 400, error: `Not a git repository: ${path}` };
+    const info = repoInfoFor(resolve(res.stdout.trim()));
+    if (!isUnderRoots(info.root, roots)) return { status: 400, error: outside };
+    registry.register(info);
+    const list = [info, ...recent.read().filter((r) => r.id !== info.id)].slice(0, MAX_RECENT);
+    recent.write(list);
+    return { info };
+  }
+
   app.post('/api/repos/open', async (req, reply) => {
     const raw = (req.body as Partial<OpenRepoRequest> | null)?.path;
     const typed = typeof raw === 'string' ? raw.trim().replace(/^"(.*)"$/, '$1') : '';
@@ -70,22 +91,9 @@ export function registerRepoRoutes(
     if (isUncOrDevicePath(input)) {
       return reply.code(400).send({ error: 'UNC and device paths are not supported. Use a local folder.' });
     }
-    const path = resolve(input);
-    if (!isUnderRoots(path, roots)) return reply.code(400).send({ error: outside });
-    if (!existsSync(path)) return reply.code(400).send({ error: `Path does not exist: ${path}` });
-    if (!isDir(path)) return reply.code(400).send({ error: `Not a folder: ${path}` });
-
-    const res = await runGit(['rev-parse', '--show-toplevel'], { cwd: path });
-    if (res.code === -1) return reply.code(500).send({ error: `Could not run git: ${res.stderr.trim()}` });
-    if (res.code !== 0 || !res.stdout.trim()) {
-      return reply.code(400).send({ error: `Not a git repository: ${path}` });
-    }
-    const info = repoInfoFor(resolve(res.stdout.trim()));
-    if (!isUnderRoots(info.root, roots)) return reply.code(400).send({ error: outside });
-    registry.register(info);
-    const list = [info, ...recent.read().filter((r) => r.id !== info.id)].slice(0, MAX_RECENT);
-    recent.write(list);
-    return info;
+    const opened = await openRepoAt(input);
+    if ('error' in opened) return reply.code(opened.status).send({ error: opened.error });
+    return opened.info;
   });
 
   app.get('/api/recent', async () => recent.read().filter((r) => isDir(r.root)));
@@ -121,4 +129,5 @@ export function registerRepoRoutes(
     await tabsQueue;
     return { ok: true };
   });
+  return openRepoAt;
 }

@@ -1,11 +1,19 @@
 import {
   TOKEN_HEADER,
   type ApiError,
+  type AutoFetchResponse,
+  type CloneRequest,
+  type CloneStreamLine,
+  type BlameResult,
   type BranchActionResult,
   type CommitDetail,
+  type CompareResult,
   type DiffContents,
   type FileDiff,
+  type FileHistoryPage,
+  type GraphVisibility,
   type FsListResult,
+  type InitRequest,
   type IntegrateResponse,
   type LocateResult,
   type LogPage,
@@ -15,6 +23,8 @@ import {
   type PullMode,
   type RemoteInfo,
   type RemoteResponse,
+  type RebasePlan,
+  type RebaseStep,
   type RefsInfo,
   type RepoInfo,
   type SearchResult,
@@ -22,6 +32,7 @@ import {
   type StashResponse,
   type StatusSummary,
   type TabsState,
+  type TemplateList,
   type TreeListing,
   type UndoStateInfo,
 } from '@gitslappin/shared';
@@ -98,9 +109,55 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
+/**
+ * POST /api/repos/clone: NDJSON progress, then one of done / error / cancelled. Aborting `signal` cancels the clone (the server stops git).
+ * A refusal (400/409) arrives as a normal error response and is thrown as an ApiRequestError.
+ */
+async function cloneStream(body: CloneRequest, onLine: (line: CloneStreamLine) => void, signal: AbortSignal): Promise<void> {
+  const res = await fetch('/api/repos/clone', {
+    method: 'POST',
+    headers: { [TOKEN_HEADER]: getToken(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const data: unknown = await res.json().catch(() => ({}));
+    const err = new ApiRequestError((data as Partial<ApiError>).error ?? `Request failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = '';
+  const flush = (all: boolean): void => {
+    const parts = pending.split('\n');
+    pending = all ? '' : (parts.pop() ?? '');
+    for (const p of parts) if (p.trim() !== '') onLine(JSON.parse(p) as CloneStreamLine);
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    flush(false);
+  }
+  pending += decoder.decode();
+  flush(true);
+}
+
 export const api = {
   openRepo: (path: string) => request<RepoInfo>('POST', '/api/repos/open', { path }),
+  templates: () => request<TemplateList>('GET', '/api/repos/templates'),
+  initRepo: (body: InitRequest) => request<RepoInfo>('POST', '/api/repos/init', body),
+  cloneRepo: cloneStream,
   recent: () => request<RepoInfo[]>('GET', '/api/recent'),
+  /** V6: `desktop` is true only on a Windows server bound to 127.0.0.1 (the open-terminal / open-folder routes answer 409 otherwise). */
+  /** V6b: `terminal` is true when the in-app terminal can run here (Windows, 127.0.0.1, node-pty loaded); `terminalBash` when Git Bash is installed. For the UI only: the server checks again. */
+  ping: () => request<{ app: string; pid: number; desktop?: boolean; terminal?: boolean; terminalBash?: boolean }>('GET', '/api/ping'),
+  /** V6b: a single-use ticket (10 s) that is the credential of the terminal WebSocket. */
+  terminalTicket: () => request<{ ticket: string }>('POST', '/api/terminal/ticket'),
+  /** V6: the server starts the terminal / file manager in the repo root; no path is ever sent. */
+  openTerminal: (id: string) => request<{ ok: true }>('POST', `/api/repos/${id}/open-terminal`),
+  openFolder: (id: string) => request<{ ok: true }>('POST', `/api/repos/${id}/open-folder`),
   fsList: (path?: string) => request<FsListResult>('GET', `/api/fs/list${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   getTabs: () => request<TabsState>('GET', '/api/tabs'),
   putTabs: (state: TabsState) => request<{ ok: true }>('PUT', '/api/tabs', state),
@@ -113,6 +170,13 @@ export const api = {
   diff: (id: string, t: DiffTarget, extra: { full?: boolean; ws?: boolean } = {}) =>
     request<FileDiff>('GET', `/api/repos/${id}/diff?${diffQuery(t, extra)}`),
   diffContents: (id: string, t: DiffTarget) => request<DiffContents>('GET', `/api/repos/${id}/diff/contents?${diffQuery(t)}`),
+  compare: (id: string, from: string, to: string | null) =>
+    request<CompareResult>('GET', `/api/repos/${id}/compare?${new URLSearchParams({ from, ...(to === null ? { workdir: '1' } : { to }) }).toString()}`),
+  visibility: (id: string) => request<GraphVisibility>('GET', `/api/repos/${id}/visibility`),
+  putVisibility: (id: string, v: GraphVisibility) => request<GraphVisibility>('PUT', `/api/repos/${id}/visibility`, v),
+  fileHistory: (id: string, sha: string, path: string, skip: number, limit = 100) =>
+    request<FileHistoryPage>('GET', `/api/repos/${id}/file-history?${new URLSearchParams({ sha, path, skip: String(skip), limit: String(limit) }).toString()}`),
+  blame: (id: string, sha: string, path: string) => request<BlameResult>('GET', `/api/repos/${id}/blame?${new URLSearchParams({ sha, path }).toString()}`),
   statusSummary: (id: string) => request<StatusSummary>('GET', `/api/repos/${id}/status-summary`),
   stage: (id: string, paths: string[]) => request<{ ok: true }>('POST', `/api/repos/${id}/stage`, { paths }),
   stageAll: (id: string) => request<{ ok: true }>('POST', `/api/repos/${id}/stage`, { all: true }),
@@ -133,8 +197,14 @@ export const api = {
   canFastForward: (id: string, name: string) => request<{ canFastForward: boolean }>('GET', `/api/repos/${id}/can-fast-forward?name=${encodeURIComponent(name)}`),
   remotes: (id: string) => request<RemoteInfo[]>('GET', `/api/repos/${id}/remotes`),
   fetchAll: (id: string) => request<RemoteResponse>('POST', `/api/repos/${id}/fetch`, {}),
+  /** The quiet background fetch (V2): the body carries only auto:true. */
+  fetchAuto: (id: string) => request<AutoFetchResponse>('POST', `/api/repos/${id}/fetch`, { auto: true }),
+  addRemote: (id: string, body: { name: string; url: string; pushUrl?: string }) => request<RemoteResponse>('POST', `/api/repos/${id}/remote/add`, body),
+  tagPush: (id: string, body: { name: string; sha: string; remote: string }) => request<RemoteResponse>('POST', `/api/repos/${id}/tag/push`, body),
+  tagDelete: (id: string, body: { name: string; sha: string }) => request<RemoteResponse>('POST', `/api/repos/${id}/tag/delete`, body),
+  tagDeleteRemote: (id: string, body: { name: string; sha: string; remote: string }) => request<RemoteResponse>('POST', `/api/repos/${id}/tag/delete-remote`, body),
   pull: (id: string, body: { mode: PullMode; branch?: string }) => request<RemoteResponse>('POST', `/api/repos/${id}/pull`, body),
-  push: (id: string, body: { branch?: string; remote?: string; remoteBranch?: string } = {}) => request<RemoteResponse>('POST', `/api/repos/${id}/push`, body),
+  push: (id: string, body: { branch?: string; remote?: string; remoteBranch?: string; upstream?: boolean } = {}) => request<RemoteResponse>('POST', `/api/repos/${id}/push`, body),
   setUpstream: (id: string, body: { branch: string; remote: string; remoteBranch: string }) => request<RemoteResponse>('POST', `/api/repos/${id}/upstream`, body),
   stash: (id: string, body: { message?: string; fromTab: boolean }) => request<StashResponse>('POST', `/api/repos/${id}/stash`, body),
   stashApply: (id: string, sha: string, pop: boolean) => request<StashResponse>('POST', `/api/repos/${id}/stash/apply`, { sha, pop }),
@@ -163,6 +233,17 @@ export const api = {
   createTag: (id: string, body: { name: string; sha: string; message?: string }) => request<DestructiveResponse>('POST', `/api/repos/${id}/tag`, body),
   cherryPick: (id: string, sha: string) => request<DestructiveResponse>('POST', `/api/repos/${id}/cherry-pick`, { sha }),
   revert: (id: string, sha: string) => request<DestructiveResponse>('POST', `/api/repos/${id}/revert`, { sha }),
+  ignore: (id: string, body: { paths: string[]; mode: 'file' | 'ext' | 'folder'; untrack: boolean }) => request<{ outcome: 'done' | 'noop' }>('POST', `/api/repos/${id}/ignore`, body),
+  /** V4: new message for a commit on HEAD's first-parent line (the commits above it are rebuilt). */
+  reword: (id: string, body: { sha: string; expectHead: string; message: string }) => request<{ outcome: 'done'; sha?: string }>('POST', `/api/repos/${id}/reword`, body),
+  /** V4: squash 2 or more consecutive commits of HEAD's first-parent line. */
+  squash: (id: string, body: { shas: string[]; expectHead: string }) => request<{ outcome: 'done'; sha?: string }>('POST', `/api/repos/${id}/squash`, body),
+  /** V4: the commits an interactive rebase would replay (newest first). children: target is a commit on HEAD's line; onto: a branch name or full sha. */
+  rebasePlan: (id: string, mode: 'children' | 'onto', target: string) => request<RebasePlan>('GET', `/api/repos/${id}/rebase/interactive/plan?mode=${mode}&target=${encodeURIComponent(target)}`),
+  /** V4: run an interactive rebase. steps are OLDEST FIRST. */
+  rebaseInteractive: (id: string, body: { upstream: string; onto: string; expectHead: string; steps: RebaseStep[] }) => request<IntegrateResponse>('POST', `/api/repos/${id}/rebase/interactive`, body),
+  /** V4: cherry pick several commits (oldest first). */
+  cherryPickMulti: (id: string, body: { shas: string[]; expectHead: string }) => request<IntegrateResponse>('POST', `/api/repos/${id}/cherry-pick/multi`, body),
   cherryPickAbort: (id: string) => request<DestructiveResponse>('POST', `/api/repos/${id}/cherry-pick/abort`, {}),
   revertAbort: (id: string) => request<DestructiveResponse>('POST', `/api/repos/${id}/revert/abort`, {}),
 };

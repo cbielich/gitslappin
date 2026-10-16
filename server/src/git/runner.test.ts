@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getCommandLog } from './commandLog';
 import { runExclusive } from './queue';
-import { buildGitArgs, childEnv, runGit, type ExecFileFn } from './runner';
+import { GIT_PATH, buildGitArgs, childEnv, runGit, type ExecFileFn } from './runner';
 
 describe('git runner', () => {
   it('prefixes args with core.quotepath=off and core.fsmonitor=false', () => {
@@ -16,7 +16,7 @@ describe('git runner', () => {
     };
     const res = await runGit(['rev-parse', '--show-toplevel'], { cwd: 'X', repoId: 'r1' }, fake);
     expect(res).toEqual({ code: 0, stdout: 'out', stderr: '' });
-    expect(captured?.file).toBe('git');
+    expect(captured?.file).toBe(GIT_PATH);
     expect(captured?.args).toEqual(['-c', 'core.quotepath=off', '-c', 'core.fsmonitor=false', 'rev-parse', '--show-toplevel']);
     expect(captured?.options.shell).toBeUndefined();
     expect(captured?.options.cwd).toBe('X');

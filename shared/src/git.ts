@@ -23,6 +23,13 @@ export interface LogCommit {
   stash?: number;
 }
 
+/** Per-repo hide/solo state: full ref names (`refs/heads/x`, `refs/remotes/o/x`, `refs/tags/x`). */
+export interface GraphVisibility {
+  hidden: string[];
+  solo: string[];
+  hideStashes: boolean;
+}
+
 export interface LogPage {
   commits: LogCommit[];
   /** Pass as `skip` for the next page. */
@@ -235,9 +242,62 @@ export interface Prefs {
   theme: Theme;
   /** 0.8 to 1.5 in 0.1 steps. */
   zoom: number;
+  /** Auto-fetch interval in minutes: an integer 0 to 60, 0 = off. */
+  autoFetchMinutes: number;
+  /** Default In-App Terminal. */
+  terminalShell: TerminalShell;
+  /** In-app terminal font size, an integer 10 to 24. */
+  terminalFontSize: number;
+  terminalCursor: TerminalCursor;
 }
+export type TerminalShell = 'powershell' | 'bash';
+export type TerminalCursor = 'block' | 'underline' | 'bar';
 
 /** Result of POST fetch / pull / push (200). A conflict means the merge or rebase is stopped (phase 6 screens). */
 export interface RemoteResponse {
   outcome: 'done' | 'conflict';
+  /** POST remote/add only: the remote was added but the fetch right after it failed (scrubbed text). */
+  fetchFailed?: string;
+}
+
+/** Result of POST fetch {auto:true}. Never carries an error text (an auto-fetch is silent). */
+export type AutoFetchResponse = { outcome: 'done'; changed: boolean } | { outcome: 'skipped' } | { outcome: 'failed' };
+
+/** GET compare: the files that differ between two commits (or a commit and the working copy). */
+export interface CompareResult {
+  files: ChangedFile[];
+  truncated: boolean;
+}
+
+export interface FileHistoryEntry {
+  sha: string;
+  authorName: string;
+  authorEmail: string;
+  authorDate: string;
+  summary: string;
+  status: 'A' | 'M' | 'D' | 'R' | 'C' | 'T';
+  /** The file's path in this commit. */
+  path: string;
+  /** Renames and copies only. */
+  oldPath?: string;
+}
+
+export interface FileHistoryPage {
+  entries: FileHistoryEntry[];
+  nextSkip: number;
+  hasMore: boolean;
+}
+
+export interface BlameCommit {
+  summary: string;
+  authorName: string;
+  authorEmail: string;
+  /** Epoch seconds. */
+  authorTime: number;
+}
+
+export interface BlameResult {
+  commits: Record<string, BlameCommit>;
+  /** One full sha per file line. */
+  lines: string[];
 }

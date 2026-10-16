@@ -1,22 +1,32 @@
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
-import { branchNameProblem, type IntegrateResponse, type PullMode,type RefsInfo, type RepoInfo, type StashResponse, type StatusSummary, type UndoStateInfo, type WipFile } from '@gitslappin/shared';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
+import { branchNameProblem, isConsecutiveChain, type GraphVisibility, type IntegrateResponse, type PullMode, type RebasePlan, type RebaseStep, type RefsInfo, type RepoInfo, type StashResponse, type StatusSummary, type UndoStateInfo, type WipFile } from '@gitslappin/shared';
 import { ApiRequestError, api, type DestructiveResponse } from '../api';
 import { useGraph } from '../hooks/useGraph';
 import { useRepoEvents, type RepoEventType } from '../hooks/useRepoEvents';
 import { UNSTAGE_CHUNK, chunk } from '../lib/chunk';
 import { diffTargetKey, type DiffTarget } from '../lib/diffTarget';
+import { onAutoFetchMinutes } from '../lib/autoFetchPref';
+import { setTerminalSlot } from '../lib/terminalSlot';
+import { headLine } from '../lib/headLine';
 import { buildMenu, type MenuCtx, type MenuEntry } from '../lib/refMenu';
+import { reduceSelection, type RowRef, type SelState } from '../lib/selection';
+import { CompareDetails } from './CompareDetails';
 import { CommitDetails, type OpenFileHook } from './DetailsPanel';
 import { displayStatus } from './FileList';
 import { DiffView, type DiffAction } from './diff/DiffView';
+import { FileHistoryView } from './diff/FileHistoryView';
 import { GraphSearch } from './graph/GraphSearch';
 import { GraphView, type MenuRequest, type ScrollTarget, type Selection } from './graph/GraphView';
 import type { Pill } from './graph/refPills';
+import { AddRemotePanel } from './AddRemotePanel';
 import { BranchPrompt } from './BranchPrompt';
 import { ConfirmBar } from './ConfirmBar';
 import { ConflictPanel } from './ConflictPanel';
 import { MergeTool } from './merge/MergeTool';
+import { RebasePanel } from './RebasePanel';
 import { ContextMenu } from './menu/ContextMenu';
+import { dropMenu, type DropRef } from '../lib/dropMenu';
+import { setDropGate } from '../lib/branchDnd';
 import { RenamePrompt, TagPrompt } from './RefPrompts';
 import { Sidebar } from './Sidebar';
 import { StagingPanel } from './StagingPanel';
@@ -24,7 +34,7 @@ import { StashDetails } from './StashDetails';
 import { Toasts, type Toast } from './Toasts';
 import { UpstreamBar } from './UpstreamBar';
 import type { RemoteToolbarState } from './Toolbar';
-import { registerShortcut } from '../lib/shortcuts';
+import { registerShortcut, BLOCKING } from '../lib/shortcuts';
 
 interface Props {
   repo: RepoInfo;
@@ -54,10 +64,25 @@ export interface RepoViewHandle {
   /** The toolbar Undo and Redo buttons. */
   undo: () => void;
   redo: () => void;
+  /** V6 palette and menu actions. */
+  fetchAll: () => void;
+  stashApply: (pop: boolean) => void;
+  discardAll: () => void;
+  searchCommits: () => void;
+  viewWip: () => void;
+  renameBranch: () => void;
+  createTag: (annotated: boolean) => void;
+  toggleLeft: () => void;
+  toggleDetails: () => void;
+  stageAll: () => void;
+  unstageAll: () => void;
+  /** Opens File History (or Blame) of a file as of HEAD. */
+  openFileHistory: (path: string, blame: boolean) => void;
 }
 
 /** After a stage or unstage: where should an open diff of this file go? null = close it. */
 function settleTarget(s: StatusSummary, t: DiffTarget, jump: boolean): DiffTarget | null {
+  if (t.source === 'workdir') return t;
   const f = s.files.find((x) => x.path === t.path);
   if (!f || t.source === 'commit' || t.source === 'stash') return null;
   const unstagedTarget = (): DiffTarget => ({ source: 'unstaged', path: f.path, ...(f.worktreeStatus === '?' ? { untracked: true } : {}), status: displayStatus(f, 'unstaged') });
@@ -74,13 +99,27 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
   const graph = useGraph(repo.id);
   const [refs, setRefs] = useState<RefsInfo | null>(null);
   const [wip, setWip] = useState<StatusSummary | null>(null);
-  const [selected, setSelected] = useState<Selection | null>(null);
+  const [selState, setSelState] = useState<SelState>({ selection: null, anchor: null });
+  const selected: Selection | null = selState.selection;
+  /** A programmatic selection (jump, stash, view changes): one row, and the anchor for a later Shift+click. */
+  const setSelected = useCallback((s: Selection | null) => {
+    const anchor: RowRef | null = s === null || s.kind === 'multi' ? null : s.kind === 'wip' ? { kind: 'wip' } : { kind: s.kind, sha: s.sha };
+    setSelState({ selection: s, anchor });
+  }, []);
+  const onRowClick = useCallback((click: { row: RowRef; shift: boolean; ctrl: boolean }, rows: RowRef[]) => setSelState((prev) => reduceSelection(prev, click, rows)), []);
+  /** The commit whose message is open in the editor (V4 reword). */
+  const [rewordSha, setRewordSha] = useState<string | null>(null);
+  /** V4: the Interactive Rebase panel (it takes the place of the graph while it is open). */
+  const [rebasePlan, setRebasePlan] = useState<RebasePlan | null>(null);
+  const line = useMemo(() => headLine(graph.commits, refs?.headSha ?? null), [graph.commits, refs?.headSha]);
   const [scrollTarget, setScrollTarget] = useState<ScrollTarget | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [focusNonce, setFocusNonce] = useState(0);
   const [matches, setMatches] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState(false);
   const [diffTarget, setDiffTarget] = useState<DiffTarget | null>(null);
+  /** V5b: File History open over the diff pane (the diff target stays set so the X comes back to it). */
+  const [fileHistory, setFileHistory] = useState<{ sha: string; path: string; blame: boolean } | null>(null);
   const [diffNonce, setDiffNonce] = useState(0);
   /** The conflicted file open in the 3-pane merge tool (it takes over the centre and right area). */
   const [mergePath, setMergePath] = useState<string | null>(null);
@@ -90,6 +129,19 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const working = useRef(false);
+  /** V6: one key press that arrived while a change was running (S, U, Ctrl+Shift+S / U): it runs when that change is over, never in parallel. */
+  const afterWork = useRef<(() => void) | null>(null);
+  const whenIdle = useCallback((fn: () => void) => {
+    if (working.current) afterWork.current = fn;
+    else fn();
+  }, []);
+  // Runs after the render that shows the finished change, so the queued key action sees the new status.
+  useEffect(() => {
+    if (busy) return;
+    const next = afterWork.current;
+    afterWork.current = null;
+    next?.();
+  }, [busy]);
   const toastId = useRef(0);
   const amendPrefill = useRef<{ summary: string; description: string } | null>(null);
   const filterRef = useRef<HTMLInputElement>(null);
@@ -102,8 +154,16 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
   const refsReq = useRef(0);
   const statusReq = useRef(0);
 
+  /** The repository's remote names (the tag menu lists them). */
+  const remoteNamesRef = useRef<string[]>([]);
   const loadRefs = useCallback(() => {
     const id = ++refsReq.current;
+    api
+      .remotes(repo.id)
+      .then((r) => {
+        if (id === refsReq.current) remoteNamesRef.current = r.map((x) => x.name);
+      })
+      .catch(() => undefined);
     api
       .refs(repo.id)
       .then((r) => {
@@ -127,6 +187,34 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
   }, [repo.id]);
 
   const { reload: reloadGraph } = graph;
+  // V5c: hide / solo state, kept on the server per repo. The graph itself is filtered by the server, so a save is followed by a reload.
+  const [vis, setVis] = useState<GraphVisibility>({ hidden: [], solo: [], hideStashes: false });
+  useEffect(() => {
+    let stale = false;
+    setVis({ hidden: [], solo: [], hideStashes: false });
+    api.visibility(repo.id).then((v) => !stale && setVis(v)).catch(() => undefined);
+    return () => {
+      stale = true;
+    };
+  }, [repo.id]);
+  const visSeq = useRef(0);
+  const visChain = useRef<Promise<unknown>>(Promise.resolve());
+  const changeVis = useCallback(
+    (next: GraphVisibility) => {
+      setVis(next);
+      const seq = ++visSeq.current;
+      // serialized: each PUT waits for the previous one; the graph reloads once, after the last
+      visChain.current = visChain.current
+        .then(() => api.putVisibility(repo.id, next))
+        .then(() => {
+          if (seq === visSeq.current) reloadGraph();
+        })
+        .catch(() => {
+          if (seq === visSeq.current) return api.visibility(repo.id).then(setVis).catch(() => undefined);
+        });
+    },
+    [repo.id, reloadGraph],
+  );
   const closeMenuRef = useRef<() => void>(() => undefined);
   const refresh = useCallback(() => {
     closeMenuRef.current(); // a menu built from old data must not stay open
@@ -184,6 +272,41 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
     }, 50);
   });
 
+  // Auto-fetch (V2): a quiet background fetch for the open repository while the page is visible. The server skips it when the repo is busy
+  // and never reports a failure; only a changed ref list reloads anything. 0 turns it off.
+  const [autoFetchMinutes, setAutoFetchMinutes] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    api
+      .getPrefs()
+      .then((p) => live && setAutoFetchMinutes((cur) => cur ?? p.autoFetchMinutes))
+      .catch(() => undefined);
+    const off = onAutoFetchMinutes((m) => setAutoFetchMinutes(m));
+    return () => {
+      live = false;
+      off();
+    };
+  }, []);
+  useEffect(() => {
+    if (!autoFetchMinutes) return;
+    let live = true;
+    const timer = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void api
+        .fetchAuto(repo.id)
+        .then((res) => {
+          if (!live || res.outcome !== 'done' || !res.changed || working.current) return;
+          loadRefs();
+          void softReload();
+        })
+        .catch(() => undefined);
+    }, autoFetchMinutes * 60_000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [autoFetchMinutes, repo.id, loadRefs, softReload]);
+
   const { ensureLoaded } = graph;
   const jump = useCallback(
     async (sha: string) => {
@@ -201,7 +324,26 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
   }, []);
 
   const onOpenFile: OpenFileHook = useCallback((t) => setDiffTarget(t), []);
-  const closeDiff = useCallback(() => setDiffTarget(null), []);
+  const closeDiff = useCallback(() => {
+    setFileHistory(null);
+    setDiffTarget(null);
+  }, []);
+  // Opening another file leaves File History.
+  const diffKey = diffTarget ? diffTargetKey(diffTarget) : '';
+  // (V6: the palette opens File History for a file with no diff open; it sets `pendingHistory` so this effect keeps it.)
+  const pendingHistory = useRef<{ sha: string; path: string; blame: boolean } | null>(null);
+  useEffect(() => {
+    const p = pendingHistory.current;
+    pendingHistory.current = null;
+    setFileHistory(p);
+  }, [diffKey]);
+  /** The commit File History starts from: the diff's commit, or HEAD for a working-copy diff. null = the file has no history to show. */
+  const historyShaFor = (t: DiffTarget): string | null => {
+    if (t.status === 'D' || t.status === '?' || t.untracked || t.source === 'stash') return null;
+    if (t.source === 'commit') return t.sha ?? null;
+    if (t.status === 'A' && t.source !== 'workdir') return null;
+    return refs?.headSha ?? null;
+  };
 
   const dismissToast = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
   /** Failure toasts stay until dismissed; a success toast goes by itself. */
@@ -291,7 +433,7 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
   /** Stage File / Stage Hunk / lines from the open diff. */
   const onDiffAction = (a: DiffAction) => {
     const t = diffTarget;
-    if (!t || t.source === 'commit' || t.source === 'stash') return;
+    if (!t || t.source === 'commit' || t.source === 'stash' || t.source === 'workdir') return;
     const side = t.source;
     const unstaging = side === 'staged';
     if (a.kind === 'file') {
@@ -374,6 +516,8 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
 
   const wipRef = useRef(wip);
   wipRef.current = wip;
+  const selRef = useRef(selected);
+  selRef.current = selected;
   const commitsRef = useRef(graph.commits);
   commitsRef.current = graph.commits;
   const menuReq = useRef(0);
@@ -382,11 +526,38 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
     setMenu(null);
   }, []);
   closeMenuRef.current = closeMenu;
+  /** V4: where the row sits on HEAD's first-parent line, and what the multi selection it belongs to allows. */
+  const rewriteCtx = (req: MenuRequest): Pick<MenuCtx, 'isHead' | 'onHeadLine' | 'childrenCount' | 'multi' | 'hasParent'> | Record<string, never> => {
+    if (req.target !== 'row') return {};
+    const commits = commitsRef.current;
+    const line = headLine(commits, refsRef.current?.headSha ?? null);
+    const info = line.get(req.sha);
+    const out: Pick<MenuCtx, 'isHead' | 'onHeadLine' | 'childrenCount' | 'multi' | 'hasParent'> = { isHead: info?.dist === 0, onHeadLine: !!info?.clean, childrenCount: info?.dist ?? 0, hasParent: (commits.find((c) => c.sha === req.sha)?.parents.length ?? 0) > 0 };
+    const sel = selRef.current;
+    if (sel?.kind === 'multi' && sel.shas.includes(req.sha)) {
+      const by = new Map(commits.map((c) => [c.sha, c]));
+      const infos = sel.shas.map((s) => line.get(s));
+      const onLine = infos.every((i) => !!i?.clean);
+      const dists = infos.map((i) => i?.dist ?? -1);
+      const oldest = Math.max(...dists);
+      out.multi = {
+        count: sel.shas.length,
+        consecutive: isConsecutiveChain(sel.shas, Object.fromEntries(sel.shas.map((s) => [s, by.get(s)?.parents ?? []]))),
+        merge: sel.shas.some((s) => (by.get(s)?.parents.length ?? 0) > 1),
+        wip: sel.wip,
+        onHeadLine: onLine,
+        canMoveUp: onLine && Math.min(...dists) > 0,
+        // The commit below the range must exist and have a parent itself, or the rebase has no base to start from.
+        canMoveDown: onLine && [...line.entries()].some(([sha, v]) => v.dist === oldest + 1 && (by.get(sha)?.parents.length ?? 0) > 0),
+      };
+    }
+    return out;
+  };
   const openMenu = useCallback(
     (x: number, y: number, req: MenuRequest) => {
       const id = ++menuReq.current;
       const merge = (commitsRef.current.find((c) => c.sha === req.sha)?.parents.length ?? 0) > 1;
-      const ctx: MenuCtx = { ...req, head: { branch: refsRef.current?.branch ?? null }, inProgress: !!wipRef.current?.op, merge };
+      const ctx: MenuCtx = { ...req, head: { branch: refsRef.current?.branch ?? null }, inProgress: !!wipRef.current?.op, merge, ...(req.tag ? { remotes: remoteNamesRef.current } : {}), ...rewriteCtx(req) };
       const b = req.branch;
       // Fast-forward needs one question to the server (is HEAD an ancestor of the branch?). If the status has not
       // arrived yet, wait for it, so a stopped merge or rebase is never missed. Otherwise the menu shows at once.
@@ -567,7 +738,7 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
     });
 
   const forcePushRef = useRef<(branch: string, expect: string) => void>(() => undefined);
-  const doPush = (branch?: string, to?: { remote: string; remoteBranch: string }) =>
+  const doPush = (branch?: string, to?: { remote: string; remoteBranch: string; upstream?: boolean }) =>
     remoteOp('Push Failed', async () => {
       const local = branch ?? refsRef.current?.branch ?? '';
       try {
@@ -765,6 +936,12 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
     if (paths.length === 0) return;
     setConfirm({ kind: 'discard-all', message: D.resetAll, okLabel: 'Reset All', run: () => runDiscard(paths), keepOpen: true }); // ResetAllButtonLabel
   };
+  /** V3 Ignore (the confirm bar, when a tracked file is involved, lives in StagingPanel). Error-IgnoreFilesFailed. */
+  const ignoreFiles = (paths: string[], mode: 'file' | 'ext' | 'folder', untrack: boolean) =>
+    mutate('Ignoring files failed', async () => {
+      await api.ignore(repo.id, { paths, mode, untrack });
+      await afterDestructive();
+    });
   /** Discard Hunk: no confirm bar (accepted in the design); the server re-diffs and refuses a stale header. */
   const onDiscardHunk = (hunk: number, header: string) => {
     const t = diffTargetRef.current;
@@ -843,6 +1020,70 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
     });
   };
 
+  // --- Remotes and tags (V2) ---
+  const [addingRemote, setAddingRemote] = useState(false);
+  /** Add Remote (screen 38): the server adds it and fetches it; a failed fetch is its own toast. */
+  const submitAddRemote = (name: string, url: string, pushUrl?: string): Promise<boolean> =>
+    mutate('Add Remote Failed', async () => {
+      // Error-AddRemoteFailed
+      setRemoteBusy(true);
+      try {
+        const res = await api.addRemote(repo.id, { name, url, ...(pushUrl ? { pushUrl } : {}) });
+        if (res.fetchFailed) addToast(`Fetch failed for '${name}'`, res.fetchFailed); // Error-FetchFailedWithName
+      } finally {
+        setRemoteBusy(false);
+      }
+      setAddingRemote(false);
+      refresh();
+    });
+
+  const doPushTag = (name: string, sha: string, remote: string) =>
+    remoteOp(`Push Failed: ${name}`, async () => {
+      // Error-PushFailedWithName
+      await api.tagPush(repo.id, { name, sha, remote });
+      addToast('Pushed Successfully', '', true); // Notification-PushedSuccessfully
+      refresh();
+    });
+  const askDeleteTag = (name: string, sha: string) =>
+    setConfirm({
+      kind: 'delete-tag',
+      message: D.deleteRef(name),
+      okLabel: 'Delete', // DeleteButtonLabel
+      keepOpen: true,
+      run: () =>
+        mutate(`Delete Failed: ${name}`, async () => {
+          // Error-DeleteFailedWithName
+          await api.tagDelete(repo.id, { name, sha });
+          afterDestructive();
+        }),
+    });
+  const askDeleteTagRemote = (name: string, sha: string, remote: string) =>
+    setConfirm({
+      kind: 'delete-tag-remote',
+      message: `This is a destructive operation, are you sure you want to delete "${cut(name)}" from "${cut(remote)}"?`, // ConfirmationMessage-DeleteTagFromRemote
+      okLabel: 'Delete', // DeleteButtonLabel
+      keepOpen: true,
+      run: () =>
+        mutate(`Delete Failed: ${name} for ${remote}`, async () => {
+          // Error-DeleteFailedWithNamesTagForRemote
+          setRemoteBusy(true);
+          try {
+            await api.tagDeleteRemote(repo.id, { name, sha, remote });
+          } finally {
+            setRemoteBusy(false);
+          }
+          refresh();
+        }),
+    });
+  const tagHandlers = (name: string, sha: string, remotes: string[]): Record<string, () => void> => {
+    const h: Record<string, () => void> = { 'tag-delete-local': () => askDeleteTag(name, sha) };
+    for (const r of remotes) {
+      h[`tag-push:${r}`] = () => doPushTag(name, sha, r);
+      h[`tag-delete-remote:${r}`] = () => askDeleteTagRemote(name, sha, r);
+    }
+    return h;
+  };
+
   /** A push git refused as non-fast-forward: the force bar, with the lease read at the time of the rejection (never refetched). */
   const askForcePush = (branch: string, expect: string) =>
     setConfirm({
@@ -911,6 +1152,121 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
     if (stashGone) setSelected(null);
   }, [stashGone]);
 
+  // --- History rewriting (V4 part A): reword and squash ---
+  useEffect(() => {
+    if (rewordSha !== null && !(selected?.kind === 'commit' && selected.sha === rewordSha)) setRewordSha(null);
+  }, [rewordSha, selected]);
+  const startReword = (sha: string) => {
+    setSelected({ kind: 'commit', sha });
+    setRewordSha(sha);
+  };
+  const doReword = (sha: string, message: string) =>
+    void mutate('Reword Failed', async () => {
+      const head = refsRef.current?.headSha;
+      if (!head) throw new Error('A branch must be checked out.');
+      const res = await api.reword(repo.id, { sha, expectHead: head, message });
+      setRewordSha(null);
+      // Only the tip keeps its place (its new sha comes back); an older commit and everything above it got new shas.
+      setSelected(sha === head && res.sha ? { kind: 'commit', sha: res.sha } : null);
+      refresh();
+      await afterChange(false);
+    });
+  /** The reword hook of the details panel: only for a commit on HEAD's first-parent line (no merge above it), HEAD on a branch, nothing stopped. */
+  const rewordProp = (sha: string): { reword?: NonNullable<Parameters<typeof CommitDetails>[0]['reword']> } => {
+    const info = line.get(sha);
+    if (!info?.clean || !refs?.branch || opActive) return {};
+    return { reword: { editing: rewordSha === sha, isHead: info.dist === 0, rebuilt: info.dist, busy, onStart: () => setRewordSha(sha), onCancel: () => setRewordSha(null), onSave: (m: string) => doReword(sha, m) } };
+  };
+  const doSquash = (shas: string[]) =>
+    void mutate('Squash Failed', async () => {
+      const head = refsRef.current?.headSha;
+      if (!head) throw new Error('A branch must be checked out.');
+      await api.squash(repo.id, { shas, expectHead: head });
+      setSelected(null);
+      refresh();
+      await afterChange(false);
+    });
+
+  // --- History rewriting (V4 part B): interactive rebase, drop, move, multi cherry pick ---
+  useEffect(() => {
+    if (opActive) setRebasePlan(null);
+  }, [opActive]);
+  const openPlan = (mode: 'children' | 'onto', target: string) =>
+    void mutate('Rebase Failed', async () => {
+      setRebasePlan(await api.rebasePlan(repo.id, mode, target));
+    });
+  /** Runs the rebase and settles the screen: done closes the panel; a conflict shows the banner (the rebase is stopped). */
+  const runRebase = (plan: { upstream: string; head: string }, steps: RebaseStep[]) =>
+    void mutate('Rebase Failed', async () => {
+      const res = await api.rebaseInteractive(repo.id, { upstream: plan.upstream, onto: plan.upstream, expectHead: plan.head, steps });
+      noteStash(res);
+      setRebasePlan(null);
+      setSelected(null);
+      refresh();
+      await afterChange(false);
+    });
+  // PromptForRebase-ConfirmDropCommit / -ConfirmDropXCommits and DropCommitsButtonLabel
+  const dropCount = (n: number): string => (n === 1 ? 'Are you sure you want to drop 1 commit?' : `Are you sure you want to drop ${n} commits?`);
+  const askDrops = (n: number, run: () => void) => setConfirm({ kind: 'rebase-drop', message: dropCount(n), okLabel: 'Drop commits', run });
+  const startRebase = (plan: RebasePlan, steps: RebaseStep[]) => {
+    const drops = steps.filter((s) => s.action === 'drop').length;
+    if (drops > 0) askDrops(drops, () => runRebase(plan, steps));
+    else runRebase(plan, steps);
+  };
+  /** The plan of the commits above the commit that is `below` + 1 parents under the oldest of these (a chain on HEAD's line), asked fresh from the server. */
+  const presetPlan = async (shas: string[], below: number): Promise<{ plan: RebasePlan; oldest: string[] }> => {
+    const commits = commitsRef.current;
+    const info = headLine(commits, refsRef.current?.headSha ?? null);
+    const byDist = [...shas].sort((a, b) => (info.get(b)?.dist ?? 0) - (info.get(a)?.dist ?? 0)); // oldest first
+    let base = byDist[0]!;
+    for (let i = 0; i <= below; i++) {
+      const parent = commits.find((c) => c.sha === base)?.parents[0];
+      if (!parent) throw new Error('This commit has no commit below it to rebase onto.');
+      base = parent;
+    }
+    return { plan: await api.rebasePlan(repo.id, 'children', base), oldest: byDist };
+  };
+  const askDrop = (shas: string[]) =>
+    askDrops(shas.length, () =>
+      void mutate('Rebase Failed', async () => {
+        const { plan } = await presetPlan(shas, 0);
+        const set = new Set(shas);
+        const steps = [...plan.commits].reverse().map((c): RebaseStep => ({ sha: c.sha, action: set.has(c.sha) ? 'drop' : 'pick' }));
+        const res = await api.rebaseInteractive(repo.id, { upstream: plan.upstream, onto: plan.upstream, expectHead: plan.head, steps });
+        noteStash(res);
+        setSelected(null);
+        refresh();
+        await afterChange(false);
+      }),
+    );
+  const runPreset = (dir: 'up' | 'down', shas: string[]) =>
+    void mutate('Rebase Failed', async () => {
+      const { plan, oldest } = await presetPlan(shas, dir === 'down' ? 1 : 0);
+      const order = [...plan.commits].reverse().map((c) => c.sha); // oldest first
+      const n = oldest.length;
+      // Up: the commit just above the range goes below it. Down: the commit just below the range goes above it.
+      const at = dir === 'down' ? 1 : 0;
+      if (order.length < n + 1 || oldest.some((s, i) => order[at + i] !== s)) throw new Error('The commits changed. Reload and try again.');
+      const moved = (dir === 'up' ? order[n] : order[0])!;
+      const rest = order.filter((s) => s !== moved && !oldest.includes(s));
+      const next = dir === 'up' ? [moved, ...oldest, ...rest] : [...oldest, moved, ...rest];
+      const res = await api.rebaseInteractive(repo.id, { upstream: plan.upstream, onto: plan.upstream, expectHead: plan.head, steps: next.map((sha): RebaseStep => ({ sha, action: 'pick' })) });
+      noteStash(res);
+      refresh();
+      await afterChange(false);
+    });
+  const pickMany = (shas: string[]) =>
+    void mutate('Cherry pick Failed', async () => {
+      const head = refsRef.current?.headSha;
+      if (!head) throw new Error('A branch must be checked out.');
+      const res = await api.cherryPickMulti(repo.id, { shas: [...shas].reverse(), expectHead: head }); // rows are newest first, the server wants oldest first
+      noteStash(res);
+      setSelected(null);
+      refresh();
+      await afterChange(false);
+      if (res.outcome === 'done') addToast('Cherry pick Successful', '', true); // Notification-CherrypickSuccessful
+    });
+
   const menuHandlers = (ctx: MenuCtx): Record<string, () => void> => {
     const b = ctx.branch;
     return {
@@ -930,6 +1286,9 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
       'create-branch-here': () => void startCreate(ctx.sha, ctx.sha),
       'copy-branch-name': () => copy(b?.name),
       'copy-commit-sha': () => copy(ctx.sha),
+      'solo-branch': () => ctx.solo && changeVis({ ...vis, hidden: vis.hidden.filter((r) => r !== ctx.solo?.ref), solo: [...vis.solo.filter((r) => r !== ctx.solo?.ref), ctx.solo.ref] }),
+      'unsolo-branch': () => ctx.solo && changeVis({ ...vis, solo: vis.solo.filter((r) => r !== ctx.solo?.ref) }),
+      'compare-working-copy': () => setSelected({ kind: 'multi', shas: [ctx.sha], wip: true }),
       // Phase 11
       'rename-branch': () => b && setRenaming(b.name),
       'delete-branch': () => b && askDelete(b.name, false),
@@ -941,7 +1300,58 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
       revert: () => pickOrRevert('revert', ctx.sha),
       'create-tag-here': () => setTagging({ sha: ctx.sha, annotated: false }),
       'create-annotated-tag': () => setTagging({ sha: ctx.sha, annotated: true }),
+      ...(ctx.tag ? tagHandlers(ctx.tag.name, ctx.sha, ctx.remotes ?? []) : {}),
+      // V4 part A
+      'edit-commit-message': () => startReword(ctx.sha),
+      'reword-commit': () => startReword(ctx.sha),
+      'squash-commits': () => {
+        const sel = selRef.current;
+        if (sel?.kind === 'multi') doSquash(sel.shas);
+      },
+      // V4 part B
+      'interactive-rebase-children': () => openPlan('children', ctx.sha),
+      'interactive-rebase-branch': () => b && openPlan('onto', b.name),
+      'drop-commit': () => askDrop([ctx.sha]),
+      'drop-commits': () => {
+        const sel = selRef.current;
+        if (sel?.kind === 'multi') askDrop(sel.shas);
+      },
+      'move-commits-up': () => {
+        const sel = selRef.current;
+        if (sel?.kind === 'multi') runPreset('up', sel.shas);
+      },
+      'move-commits-down': () => {
+        const sel = selRef.current;
+        if (sel?.kind === 'multi') runPreset('down', sel.shas);
+      },
+      'cherry-pick-commits': () => {
+        const sel = selRef.current;
+        if (sel?.kind === 'multi') pickMany(sel.shas);
+      },
     };
+  };
+
+  // --- V6 drag and drop: dropping a branch on another shows a menu; nothing runs until an item is clicked ---
+  const [dropMenuState, setDropMenuState] = useState<{ x: number; y: number; entries: MenuEntry[] } | null>(null);
+  useEffect(() => {
+    setDropGate((src, dst) => dropMenu(src, dst, { branch: refsRef.current?.branch ?? null }, { inProgress: !!wipRef.current?.op, gitAtLeast238: true, handlers: {} }).length > 0);
+    return () => setDropGate(null);
+  }, []);
+  const onBranchDrop = (x: number, y: number, src: DropRef, dst: DropRef) => {
+    const handlers: Record<string, () => void> = {
+      'merge-branch-into-branch': () => integrate('Merge Failed', () => api.merge(repo.id, { name: src.name })),
+      'rebase-branch-onto-branch': () => integrate('Rebase Failed', () => api.rebase(repo.id, { name: dst.name })), // the existing journaled rebase path
+      'rebase-branch-onto-branch-interactively': () => openPlan('onto', dst.name),
+      'push-x-to-y': () => {
+        // The remote name may itself contain '/': take the longest known remote that prefixes the tracking name.
+        const remote = remoteNamesRef.current.filter((r) => dst.name.startsWith(`${r}/`)).sort((a, b) => b.length - a.length)[0];
+        if (!remote) return addToast('Push Failed', 'That is not an existing remote.');
+        doPush(src.name, { remote, remoteBranch: dst.name.slice(remote.length + 1), upstream: false }); // never forces, never offers Force Push
+      },
+    };
+    const entries = dropMenu(src, dst, { branch: refsRef.current?.branch ?? null }, { inProgress: !!wipRef.current?.op, gitAtLeast238: true, handlers });
+    closeMenu();
+    setDropMenuState(entries.length > 0 ? { x, y, entries } : null);
   };
 
   /** The +N pill menu: one item per extra branch, each opening that branch's own menu (one level deep). */
@@ -999,7 +1409,7 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
   const undoKey = useRef<(dir: 'undo' | 'redo') => void>(() => undefined);
   undoKey.current = (dir) => {
     // Ignored while a change runs or a question is open (an open diff that is only reading itself again does not count).
-    if (working.current || busy || remoteBusy || confirm || skipConfirm || opActive) return;
+    if (working.current || busy || remoteBusy || confirm || skipConfirm || opActive || rebasePlan) return;
     // The server's journal is the truth (the toolbar copy may not have arrived yet); with nothing to do the key does nothing.
     void api
       .undoState(repo.id)
@@ -1012,7 +1422,7 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
   useEffect(() => {
     // The shortcut registry keeps typing fields and the code editor out; anything open on top (menu, picker, confirm bar) is checked here.
     const make = (dir: 'undo' | 'redo') => (e: KeyboardEvent) => {
-      if (document.querySelector('[data-testid="context-menu"], .confirm-bar, .branch-picker, .pull-menu, [role="menu"], [role="dialog"], [role="alertdialog"]')) return false;
+      if (document.querySelector(BLOCKING)) return false;
       if (!e.repeat) undoKey.current(dir); // a held key runs one step, not a series
       return true;
     };
@@ -1100,9 +1510,195 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
     return () => offs.forEach((off) => off());
   }, []);
 
+  // --- V6: panel toggles, graph keyboard navigation, palette actions ---
+  const [leftHidden, setLeftHidden] = useState(false);
+  const [detailsHidden, setDetailsHidden] = useState(false);
+  const selStateRef = useRef(selState);
+  selStateRef.current = selState;
+  const overlayOpen = () => !!document.querySelector(BLOCKING);
+  const navRows = (): RowRef[] => {
+    const list: RowRef[] = commitsRef.current.map((c): RowRef => ({ kind: c.stash !== undefined ? 'stash' : 'commit', sha: c.sha }));
+    const w = wipRef.current;
+    return w && (w.total > 0 || w.op) ? [{ kind: 'wip' }, ...list] : list;
+  };
+  const sameRow = (a: RowRef, b: RowRef) => a.kind === b.kind && (a.kind === 'wip' || (b.kind !== 'wip' && a.sha === b.sha));
+  const currentRow = (): RowRef | null => {
+    const s = selStateRef.current;
+    if (s.anchor) return s.anchor;
+    const sel = s.selection;
+    return !sel || sel.kind === 'multi' ? null : sel.kind === 'wip' ? { kind: 'wip' } : { kind: sel.kind, sha: sel.sha };
+  };
+  const navSelect = (rows: RowRef[], row: RowRef) => {
+    setSelState((prev) => reduceSelection(prev, { row, shift: false, ctrl: false }, rows));
+    setScrollTarget({ sha: row.kind === 'wip' ? 'wip' : row.sha, nonce: ++nonce.current });
+  };
+  /** Up / Down / first / last over the loaded rows (the WIP row first when it shows). */
+  const navMove = (to: 'prev' | 'next' | 'first' | 'last'): boolean => {
+    if (diffTargetRef.current || mergePathRef.current || rebasePlanRef.current || overlayOpen()) return false;
+    const rows = navRows();
+    if (rows.length === 0) return false;
+    const cur = currentRow();
+    const i = cur ? rows.findIndex((r) => sameRow(r, cur)) : -1;
+    // "First" is the newest commit (the WIP row above it is reached with the Up key).
+    const next = to === 'first' ? Math.max(0, rows.findIndex((r) => r.kind !== 'wip')) : to === 'last' ? rows.length - 1 : i < 0 ? (to === 'next' ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, i + (to === 'next' ? 1 : -1)));
+    const row = rows[next];
+    if (row && next !== i) navSelect(rows, row);
+    return true;
+  };
+  /** Shift+Down / Shift+Up: along the first parents (Down = the parent, Up = the nearest child that has this commit as its first parent). */
+  const navBranch = (dir: 'down' | 'up'): boolean => {
+    if (diffTargetRef.current || mergePathRef.current || rebasePlanRef.current || overlayOpen()) return false;
+    const cur = currentRow();
+    if (!cur) return false;
+    const commits = commitsRef.current;
+    if (cur.kind === 'wip') {
+      const head = refsRef.current?.headSha;
+      if (dir === 'down' && head) void jump(head);
+      return true;
+    }
+    if (cur.kind === 'stash') return true;
+    if (dir === 'down') {
+      const parent = commits.find((c) => c.sha === cur.sha)?.parents[0];
+      if (parent) void jump(parent);
+      return true;
+    }
+    for (let i = commits.length - 1; i >= 0; i--) {
+      const c = commits[i]!;
+      if (c.stash === undefined && c.parents[0] === cur.sha) {
+        void jump(c.sha);
+        break;
+      }
+    }
+    return true;
+  };
+  const zones = {
+    left: ['[data-testid="left-panel"]'],
+    graph: ['[data-testid="center-panel"]'],
+    right: ['[data-testid="commit-details"]', '[data-testid="wip-details"]', '[data-testid="right-panel"]'],
+  };
+  const focusZone = (z: keyof typeof zones) => {
+    for (const sel of zones[z]) {
+      const el = document.querySelector<HTMLElement>(sel);
+      if (el && el.offsetParent !== null) {
+        el.focus();
+        return;
+      }
+    }
+  };
+  /** Left / Right: the focus moves between the left panel, the graph and the details. */
+  const navFocus = (dir: 'left' | 'right'): boolean => {
+    if (overlayOpen()) return false;
+    const a = document.activeElement;
+    const zone: keyof typeof zones = a?.closest('[data-testid="left-panel"]') ? 'left' : a?.closest('[data-testid="right-panel"]') ? 'right' : 'graph';
+    if (dir === 'left') focusZone(zone === 'right' ? 'graph' : 'left');
+    else focusZone(zone === 'left' ? 'graph' : 'right');
+    return true;
+  };
+  const mergePathRef = useRef(mergePath);
+  mergePathRef.current = mergePath;
+  const rebasePlanRef = useRef(rebasePlan);
+  rebasePlanRef.current = rebasePlan;
+  const focusMessage = () => {
+    const focus = () => document.querySelector<HTMLInputElement>('[data-testid="commit-summary"]')?.focus();
+    if (document.querySelector('[data-testid="commit-summary"]')) focus();
+    else {
+      viewChanges();
+      setTimeout(focus, 150);
+    }
+  };
+  /** Stage All + Commit (Ctrl+Shift+Enter in the message field): one change, so the two steps never race. */
+  const commitAll = () => {
+    const message = composedMessage();
+    const wasAmend = amend;
+    void mutate(wasAmend ? 'Amend failed' : 'Commit failed', async () => {
+      await api.stageAll(repo.id);
+      await api.commitChanges(repo.id, message, wasAmend);
+      setSummary('');
+      setDescription('');
+      setAmend(false);
+      amendPrefill.current = null;
+      refresh();
+      await afterChange(false);
+    });
+  };
+  const openFileHistory = (path: string, blame: boolean) => {
+    const sha = refsRef.current?.headSha;
+    if (!sha) return;
+    const target: DiffTarget = { source: 'commit', sha, path, status: null };
+    const hist = { sha, path, blame };
+    pendingHistory.current = hist;
+    setFileHistory(hist);
+    setDiffTarget(target);
+  };
+  const toggleLeft = () => setLeftHidden((h) => !h);
+  const toggleDetails = () => setDetailsHidden((h) => !h);
+  const stageAllKey = () => {
+    const w = wipRef.current;
+    if (!w || w.total === 0 || w.op) return false;
+    whenIdle(() => act.current.stageAll());
+    return true;
+  };
+  const unstageAllKey = () => {
+    whenIdle(() => act.current.unstageAll());
+    return true;
+  };
+  const startCreateAtHead = () => {
+    const head = refsRef.current?.headSha;
+    if (!head) return false;
+    void startCreate(head);
+    return true;
+  };
+  const stashTop = (pop: boolean) => {
+    const top = refsRef.current?.stashes[0];
+    if (top) applyStash(top.sha, pop);
+  };
+  const act = useRef({ navMove, navBranch, navFocus, focusMessage, stageAllKey, unstageAllKey, stageAll, unstageAll, startCreateAtHead, doFetch, toggleLeft, toggleDetails });
+  act.current = { navMove, navBranch, navFocus, focusMessage, stageAllKey, unstageAllKey, stageAll, unstageAll, startCreateAtHead, doFetch, toggleLeft, toggleDetails };
+  useEffect(() => {
+    const offs = [
+      registerShortcut('createBranch', () => act.current.startCreateAtHead()),
+      registerShortcut('fetchAll', () => void act.current.doFetch()),
+      registerShortcut('focusMessage', () => act.current.focusMessage()),
+      registerShortcut('stageAll', () => act.current.stageAllKey()),
+      registerShortcut('unstageAll', () => act.current.unstageAllKey()),
+      registerShortcut('navPrev', () => act.current.navMove('prev')),
+      registerShortcut('navNext', () => act.current.navMove('next')),
+      registerShortcut('navFirst', () => act.current.navMove('first')),
+      registerShortcut('navLast', () => act.current.navMove('last')),
+      registerShortcut('navPrevInBranch', () => act.current.navBranch('up')),
+      registerShortcut('navNextInBranch', () => act.current.navBranch('down')),
+      registerShortcut('navLeft', () => act.current.navFocus('left')),
+      registerShortcut('navRight', () => act.current.navFocus('right')),
+      registerShortcut('toggleLeft', () => act.current.toggleLeft()),
+      registerShortcut('toggleDetails', () => act.current.toggleDetails()),
+    ];
+    return () => offs.forEach((off) => off());
+  }, []);
+
   useImperativeHandle(
     ref,
     () => ({
+      fetchAll: () => void doFetch(),
+      stashApply: stashTop,
+      discardAll: askDiscardAll,
+      searchCommits: () => {
+        setSearchOpen(true);
+        setFocusNonce((n) => n + 1);
+      },
+      viewWip: viewChanges,
+      renameBranch: () => {
+        const b = refsRef.current?.branch;
+        if (b) setRenaming(b);
+      },
+      createTag: (annotated: boolean) => {
+        const sha = refsRef.current?.headSha;
+        if (sha) setTagging({ sha, annotated });
+      },
+      toggleLeft,
+      toggleDetails,
+      stageAll: () => void stageAllKey(),
+      unstageAll,
+      openFileHistory,
       refresh,
       startCreateBranch: () => {
         const head = refsRef.current?.headSha;
@@ -1134,11 +1730,12 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
   }, [wip, wipTotal, selected]);
   return (
     <div className="columns" data-testid="repo-view" data-repo-id={repo.id}>
-      <Sidebar repoId={repo.id} refs={refs} collapsed={collapsed} rail={diffTarget !== null} hidden={mergePath !== null} onToggleCollapse={() => setCollapsed((c) => !c)} filterRef={filterRef} onJump={(sha) => void jump(sha)} onSelectStash={(sha) => void selectStash(sha)} onMenu={openMenu} onCheckout={(kind, name) => doCheckout({ kind, name })} />
-      <section className="center-panel" data-testid="center-panel" style={mergePath ? { display: 'none' } : undefined}>
+      <Sidebar repoId={repo.id} refs={refs} vis={vis} onVis={changeVis} collapsed={collapsed} rail={diffTarget !== null} hidden={mergePath !== null || leftHidden} onToggleCollapse={() => setCollapsed((c) => !c)} filterRef={filterRef} onJump={(sha) => void jump(sha)} onSelectStash={(sha) => void selectStash(sha)} onMenu={openMenu} onBranchDrop={onBranchDrop} onCheckout={(kind, name) => doCheckout({ kind, name })} onAddRemote={() => setAddingRemote(true)} />
+      {addingRemote && <AddRemotePanel onSubmit={submitAddRemote} onClose={() => setAddingRemote(false)} />}
+      <section className="center-panel" data-testid="center-panel" tabIndex={-1} style={mergePath ? { display: 'none' } : undefined}>
         {searchOpen && !diffTarget && <GraphSearch repoId={repo.id} focusNonce={focusNonce} onJump={(sha) => void jump(sha)} onMatches={onMatches} onClose={closeSearch} />}
         {/* Stays mounted while a diff is open so scroll position and loaded pages survive. */}
-        <div className={`graph-wrap${diffTarget ? ' hidden' : ''}`}>
+        <div className={`graph-wrap${diffTarget || rebasePlan ? ' hidden' : ''}`}>
         <GraphView
           rows={graph.rows}
           commits={graph.commits}
@@ -1151,12 +1748,13 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
           wip={wip}
           headSha={refs?.headSha ?? null}
           selected={selected}
-          onSelect={setSelected}
+          onSelect={onRowClick}
           matches={matches}
           scrollTarget={scrollTarget}
           wipMessage={summary}
           onWipMessage={setSummary}
           onMenu={openMenu}
+          onBranchDrop={onBranchDrop}
           onPillOpen={onPillOpen}
           creatingSha={creating?.rowSha ?? null}
           creatingName={creatingName}
@@ -1165,7 +1763,9 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
           onCreateCancel={onCreateCancel}
         />
         </div>
-        {diffTarget && (
+        {rebasePlan && !diffTarget && <RebasePanel key={rebasePlan.head + rebasePlan.upstream} repoId={repo.id} plan={rebasePlan} busy={busy} onStart={(steps) => startRebase(rebasePlan, steps)} onCancel={() => setRebasePlan(null)} />}
+        {diffTarget && fileHistory && <FileHistoryView key={`${fileHistory.sha}|${fileHistory.path}|${fileHistory.blame ? 1 : 0}`} repoId={repo.id} sha={fileHistory.sha} path={fileHistory.path} blame={fileHistory.blame} onClose={() => setFileHistory(null)} />}
+        {diffTarget && !fileHistory && (
           <DiffView
             key={diffTargetKey(diffTarget)}
             repoId={repo.id}
@@ -1176,11 +1776,13 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
             onSettled={onDiffSettled}
             {...(diffTarget.source === 'staged' || diffTarget.source === 'unstaged' ? { onAction: onDiffAction } : {})}
             {...(diffTarget.source === 'unstaged' && !diffTarget.untracked ? { onDiscardHunk } : {})}
+            {...(historyShaFor(diffTarget) ? { onHistory: () => setFileHistory({ sha: historyShaFor(diffTarget)!, path: diffTarget.path, blame: false }), onBlame: () => setFileHistory({ sha: historyShaFor(diffTarget)!, path: diffTarget.path, blame: true }) } : {})}
           />
         )}
         {prompt && <BranchPrompt exists={prompt.exists} onCreate={onPromptCreate} onCancel={() => setPrompt(null)} />}
         {renaming && <RenamePrompt key={renaming} name={renaming} onSubmit={(n) => submitRename(renaming, n)} onCancel={() => setRenaming(null)} />}
         {tagging && <TagPrompt key={`${tagging.sha}${tagging.annotated}`} annotated={tagging.annotated} onSubmit={(n, m) => submitTag(tagging.sha, n, m)} onCancel={() => setTagging(null)} />}
+        <div className="terminal-slot" ref={setTerminalSlot} />
       </section>
       {mergePath && (
         <MergeTool
@@ -1196,10 +1798,19 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
           }}
         />
       )}
-      <aside className="right-panel" data-testid="right-panel" style={mergePath ? { display: 'none' } : undefined}>
+      <aside className="right-panel" data-testid="right-panel" tabIndex={-1} style={mergePath || detailsHidden ? { display: 'none' } : undefined}>
         {selected?.kind === 'commit' && (
-          <CommitDetails repoId={repo.id} sha={selected.sha} wipTotal={wipTotal} onViewChanges={viewChanges} onOpenFile={onOpenFile} onJump={(sha) => void jump(sha)} />
+          <CommitDetails
+            repoId={repo.id}
+            sha={selected.sha}
+            wipTotal={wipTotal}
+            onViewChanges={viewChanges}
+            onOpenFile={onOpenFile}
+            onJump={(sha) => void jump(sha)}
+            {...rewordProp(selected.sha)}
+          />
         )}
+        {selected?.kind === 'multi' && <CompareDetails repoId={repo.id} shas={selected.shas} wip={selected.wip} commits={graph.commits} headSha={refs?.headSha ?? null} onOpenFile={onOpenFile} />}
         {selected?.kind === 'stash' && refs?.stashes.find((s) => s.sha === selected.sha) && (
           <StashDetails key={selected.sha} repoId={repo.id} stash={refs.stashes.find((s) => s.sha === selected.sha)!} onOpenFile={onOpenFile} />
         )}
@@ -1238,13 +1849,17 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
             onStageAll={stageAll}
             onUnstageAll={unstageAll}
             onCommit={doCommit}
+            onCommitAll={commitAll}
+            whenIdle={whenIdle}
             onStash={stashFromTab}
             onDiscard={askDiscard}
             onDiscardAll={askDiscardAll}
+            onIgnore={ignoreFiles}
           />
         )}
       </aside>
       {menu && <ContextMenu x={menu.x} y={menu.y} entries={menuEntries(menu.ctx)} onClose={closeMenu} />}
+      {dropMenuState && <ContextMenu x={dropMenuState.x} y={dropMenuState.y} entries={dropMenuState.entries} onClose={() => setDropMenuState(null)} />}
       {upstream && <UpstreamBar key={upstream.branch + upstream.intent} branch={upstream.branch} remotes={upstream.remotes} onSubmit={submitUpstream} onCancel={() => setUpstream(null)} />}
       {confirm && (
         <ConfirmBar

@@ -23,7 +23,7 @@ const stored = (dir: string) => JSON.parse(readFileSync(file(dir), 'utf8')) as R
 describe('defaults and corrupt file', () => {
   it('defaults when there is no file', () => {
     expect(PREFS_FILE).toBe('prefs.json');
-    expect(DEFAULT_PREFS).toEqual({ pullMode: 'merge', theme: 'dark', zoom: 1 });
+    expect(DEFAULT_PREFS).toEqual({ pullMode: 'merge', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
     expect(readPrefs(freshDataDir())).toEqual(DEFAULT_PREFS);
   });
 
@@ -38,15 +38,15 @@ describe('defaults and corrupt file', () => {
   it('invalid stored values fall back per field and keep the valid ones', () => {
     const dir = freshDataDir();
     writeFileSync(file(dir), JSON.stringify({ pullMode: 'rebase', theme: 'neon', zoom: 9 }));
-    expect(readPrefs(dir)).toEqual({ pullMode: 'rebase', theme: 'dark', zoom: 1 });
+    expect(readPrefs(dir)).toEqual({ pullMode: 'rebase', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
   });
 
   it('a corrupt file is repaired by the next valid update', () => {
     const dir = freshDataDir();
     writeFileSync(file(dir), '{oops');
     const res = updatePrefs(dir, { theme: 'light' });
-    expect(res).toEqual({ ok: true, prefs: { pullMode: 'merge', theme: 'light', zoom: 1 } });
-    expect(stored(dir)).toEqual({ pullMode: 'merge', theme: 'light', zoom: 1 });
+    expect(res).toEqual({ ok: true, prefs: { pullMode: 'merge', theme: 'light', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' } });
+    expect(stored(dir)).toEqual({ pullMode: 'merge', theme: 'light', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
   });
 });
 
@@ -82,7 +82,7 @@ describe('validation', () => {
     expect(res).toEqual({ ok: true, patch: { theme: 'light' } });
     const dir = freshDataDir();
     updatePrefs(dir, body);
-    expect(Object.keys(stored(dir)).sort()).toEqual(['pullMode', 'theme', 'zoom']);
+    expect(Object.keys(stored(dir)).sort()).toEqual(['autoFetchMinutes', 'pullMode', 'terminalCursor', 'terminalFontSize', 'terminalShell', 'theme', 'zoom']);
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 });
@@ -93,15 +93,15 @@ describe('merge rule', () => {
     expect(updatePrefs(dir, { pullMode: 'rebase' }).ok).toBe(true);
     expect(updatePrefs(dir, { zoom: 1.3 }).ok).toBe(true);
     const res = updatePrefs(dir, { theme: 'light' });
-    expect(res).toEqual({ ok: true, prefs: { pullMode: 'rebase', theme: 'light', zoom: 1.3 } });
-    expect(readPrefs(dir)).toEqual({ pullMode: 'rebase', theme: 'light', zoom: 1.3 });
-    expect(stored(dir)).toEqual({ pullMode: 'rebase', theme: 'light', zoom: 1.3 });
+    expect(res).toEqual({ ok: true, prefs: { pullMode: 'rebase', theme: 'light', zoom: 1.3, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' } });
+    expect(readPrefs(dir)).toEqual({ pullMode: 'rebase', theme: 'light', zoom: 1.3, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
+    expect(stored(dir)).toEqual({ pullMode: 'rebase', theme: 'light', zoom: 1.3, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
   });
 
   it('a pullMode-only update keeps theme and zoom', () => {
     const dir = freshDataDir();
     updatePrefs(dir, { theme: 'light', zoom: 0.8 });
-    expect(updatePrefs(dir, { pullMode: 'ff-only' })).toEqual({ ok: true, prefs: { pullMode: 'ff-only', theme: 'light', zoom: 0.8 } });
+    expect(updatePrefs(dir, { pullMode: 'ff-only' })).toEqual({ ok: true, prefs: { pullMode: 'ff-only', theme: 'light', zoom: 0.8, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' } });
   });
 
   it('a rejected update leaves the stored file byte-for-byte unchanged', () => {

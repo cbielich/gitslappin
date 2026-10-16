@@ -22,11 +22,27 @@ export interface MenuCtx {
   upstream?: string | null;
   /** The commit is a merge commit (two or more parents): Cherry pick and Revert are hidden. */
   merge?: boolean;
+  /** V2: the menu is about this tag (a sidebar TAGS row or a graph tag label). The tag group comes first, then the commit-row items. */
+  tag?: { name: string };
+  /** V5c: a sidebar branch or tag row: its full ref name and whether it is soloed (offers Solo / Stop soloing). */
+  solo?: { ref: string; soloed: boolean };
+  /** V2: the names of the repository's remotes (filled in by the view when the menu opens). */
+  remotes?: string[];
+  /** V4: the row's commit is the HEAD tip. */
+  isHead?: boolean;
+  /** V4: the row's commit is on HEAD's first-parent line (HEAD included) and HEAD is a branch. */
+  onHeadLine?: boolean;
+  /** V4: commits above this one up to HEAD. */
+  childrenCount?: number;
+  /** V4: the row's commit has a parent (a root commit cannot be dropped). */
+  hasParent?: boolean;
+  /** V4: set when the menu opens on a row that belongs to a multi selection of 2 or more commits. */
+  multi?: { count: number; consecutive: boolean; merge: boolean; wip: boolean; onHeadLine: boolean; canMoveUp: boolean; canMoveDown: boolean };
 }
 
 export type MenuEntry = { type: 'divider' } | { type: 'item'; id: string; label: string; run: () => void; submenu?: MenuEntry[] };
 
-export type MenuGroup = 'stash' | 'remote' | 'integrate' | 'checkout' | 'commit' | 'branch' | 'copy' | 'tags';
+export type MenuGroup = 'stash' | 'remote' | 'integrate' | 'checkout' | 'commit' | 'branch' | 'copy' | 'rewrite' | 'tags';
 
 export interface MenuItemDef {
   id: string;
@@ -68,11 +84,60 @@ export const TEXT: Record<string, string> = {
   'ContextMenu-RenameBranch': 'Rename {0}',
   'ContextMenu-DeleteBranch': 'Delete {0}',
   'ContextMenu-DeleteLocalAndRemoteBranches': 'Delete {0} and {1}',
+  SoloBranch: 'Solo this branch',
+  'LeftPanel-StopSoloing': 'Stop soloing this branch',
+  'ContextMenu-CompareAgainstWorkingCopy': 'Compare commit against working directory',
   'ContextMenu-CopyBranchName': 'Copy branch name',
   'ContextMenu-CopyCommitSha': 'Copy commit sha',
   'ContextMenu-CreateTagHere': 'Create tag here',
   'ContextMenu-CreateAnnotatedTag': 'Create annotated tag here',
+  'ContextMenu-PushXToY': 'Push {0} to {1}',
+  'ContextMenu-PushTagToRemote': 'Push tag to remote',
+  'ContextMenu-DeleteTagXLocally': 'Delete {0} locally',
+  'ContextMenu-DeleteTagXFromRemoteY': 'Delete {0} from {1}',
+  'ContextMenu-DeleteTagFromRemote': 'Delete tag from remote',
+  'ContextMenu-AmendOrRewordCommitMessage': 'Edit commit message',
+  'ContextMenu-RewordCommit': 'Reword commit',
+  'ContextMenu-DropCommit': 'Drop commit',
+  'ContextMenu-DropCommits': 'Drop {0} commits',
+  'ContextMenu-RebaseXChildrenOfShaInteractively': 'Interactive Rebase {0} children of {1}',
+  'ContextMenu-SquashXCommits': 'Squash {0} commits',
+  'ContextMenu-MoveXCommitsUp': 'Move {0} commits up',
+  'ContextMenu-MoveXCommitsDown': 'Move {0} commits down',
+  'ContextMenu-CherrypickCommits': 'Cherry pick {0} commits',
+  'ContextMenu-RebaseBranchOntoBranchInteractively': 'Interactive Rebase {0} onto {1}',
 };
+
+const fill = (key: string, ...a: string[]): string => (TEXT[key] ?? key).replace(/\{(\d)\}/g, (_m, i: string) => a[Number(i)] ?? '');
+
+/**
+ * V2 tag group (before every other group). Handler ids: `tag-push:<remote>`, `tag-delete-local`, `tag-delete-remote:<remote>`.
+ * One remote: three plain items. Several: two submenus listing the remotes. No remote: only the local delete.
+ * (DeleteTagXFromAllRemotes is not offered.)
+ */
+function tagEntries(ctx: MenuCtx, handlers: Record<string, () => void>): MenuEntry[] {
+  const name = ctx.tag?.name;
+  if (!name) return [];
+  const remotes = ctx.remotes ?? [];
+  const item = (id: string, label: string, run: (() => void) | undefined, submenu?: MenuEntry[]): MenuEntry[] =>
+    submenu ? (submenu.length > 0 ? [{ type: 'item', id, label, run: () => undefined, submenu }] : []) : run ? [{ type: 'item', id, label, run: () => run() }] : [];
+  const each = (prefix: string): MenuEntry[] => remotes.flatMap((r) => item(`${prefix}${r}`, r, handlers[`${prefix}${r}`]));
+  const out: MenuEntry[] = [];
+  if (remotes.length === 1) {
+    const r = remotes[0] ?? '';
+    out.push(...item('tag-push', fill('ContextMenu-PushXToY', name, r), handlers[`tag-push:${r}`]));
+  } else if (remotes.length > 1) {
+    out.push(...item('tag-push', fill('ContextMenu-PushTagToRemote'), undefined, each('tag-push:')));
+  }
+  out.push(...item('tag-delete-local', fill('ContextMenu-DeleteTagXLocally', name), handlers['tag-delete-local']));
+  if (remotes.length === 1) {
+    const r = remotes[0] ?? '';
+    out.push(...item('tag-delete-remote', fill('ContextMenu-DeleteTagXFromRemoteY', name, r), handlers[`tag-delete-remote:${r}`]));
+  } else if (remotes.length > 1) {
+    out.push(...item('tag-delete-remote', fill('ContextMenu-DeleteTagFromRemote'), undefined, each('tag-delete-remote:')));
+  }
+  return out;
+}
 
 const none = (): string[] => [];
 const branchName = (c: MenuCtx): string => c.branch?.name ?? '';
@@ -84,6 +149,13 @@ const integrable = (c: MenuCtx): boolean => otherBranch(c) && !c.inProgress;
 /** Remote items need a local branch, an attached HEAD and no stopped operation. */
 const remotable = (c: MenuCtx): boolean => onLocal(c) && c.head.branch !== null && !c.inProgress;
 const intoHead = (c: MenuCtx): string[] => [branchName(c), c.head.branch ?? ''];
+
+/** V4: every history-rewriting item needs an attached HEAD and no stopped operation. */
+const rewritable = (c: MenuCtx): boolean => c.head.branch !== null && !c.inProgress;
+const oneRow = (c: MenuCtx): boolean => rewritable(c) && c.target === 'row' && !c.multi && c.onHeadLine === true;
+/** A multi selection whose commits form a plain chain on the HEAD line (no merge, no WIP). */
+const chain = (c: MenuCtx): boolean => rewritable(c) && !!c.multi && c.multi.consecutive && !c.multi.merge && !c.multi.wip && c.multi.onHeadLine;
+const count = (c: MenuCtx): string[] => [String(c.multi?.count ?? 0)];
 
 const onStash = (c: MenuCtx): boolean => c.target === 'stash';
 
@@ -100,6 +172,7 @@ export const ITEMS: MenuItemDef[] = [
   { id: 'merge', group: 'integrate', key: 'ContextMenu-MergeBranchIntoBranch', args: intoHead, when: integrable },
   { id: 'fast-forward', group: 'integrate', key: 'ContextMenu-FastForward', args: (c) => [c.head.branch ?? '', branchName(c)], when: (c) => integrable(c) && c.canFastForward === true },
   { id: 'rebase', group: 'integrate', key: 'ContextMenu-RebaseBranchOntoBranch', args: (c) => [c.head.branch ?? '', branchName(c)], when: integrable },
+  { id: 'interactive-rebase-branch', group: 'integrate', key: 'ContextMenu-RebaseBranchOntoBranchInteractively', args: (c) => [c.head.branch ?? '', branchName(c)], when: integrable },
   { id: 'rebase-this-commit', group: 'integrate', key: 'ContextMenu-RebaseBranchOntoThisCommit', args: (c) => [c.head.branch ?? ''], when: (c) => c.target === 'row' && c.head.branch !== null && !c.inProgress },
   // Checkout (phase 5)
   { id: 'checkout', group: 'checkout', key: 'ContextMenu-Checkout', args: none, when: (c) => !!c.branch, submenu: ['checkout-branch', 'checkout-commit-submenu'] },
@@ -108,8 +181,9 @@ export const ITEMS: MenuItemDef[] = [
   { id: 'checkout-commit', group: 'checkout', key: 'ContextMenu-CheckoutCommit', args: none, when: (c) => !c.branch },
   // Commit
   { id: 'create-branch-here', group: 'commit', key: 'ContextMenu-CreateBranchHere', args: none, when: () => true },
+  { id: 'compare-working-copy', group: 'commit', key: 'ContextMenu-CompareAgainstWorkingCopy', args: none, when: (c) => c.target === 'row' && !c.multi },
   // Cherry pick and revert are hidden for a merge commit; every phase 11 commit action needs an attached HEAD and no stopped operation.
-  { id: 'cherry-pick', group: 'commit', key: 'ContextMenu-CherrypickCommit', args: none, when: (c) => c.head.branch !== null && !c.inProgress && !c.merge },
+  { id: 'cherry-pick', group: 'commit', key: 'ContextMenu-CherrypickCommit', args: none, when: (c) => c.head.branch !== null && !c.inProgress && !c.merge && !c.multi },
   {
     id: 'reset',
     group: 'commit',
@@ -122,7 +196,19 @@ export const ITEMS: MenuItemDef[] = [
   { id: 'reset-mixed', group: 'commit', key: 'ContextMenu-ResetMixedWithHint', args: none, when: () => true, child: true },
   { id: 'reset-hard', group: 'commit', key: 'ContextMenu-ResetHardWithHint', args: none, when: () => true, child: true },
   { id: 'revert', group: 'commit', key: 'ContextMenu-RevertCommit', args: none, when: (c) => c.head.branch !== null && !c.inProgress && !c.merge },
+  // History rewriting (V4), order from GitKraken's getInteractiveRebaseShortcuts
+  { id: 'edit-commit-message', group: 'rewrite', key: 'ContextMenu-AmendOrRewordCommitMessage', args: none, when: (c) => oneRow(c) && c.isHead === true },
+  { id: 'reword-commit', group: 'rewrite', key: 'ContextMenu-RewordCommit', args: none, when: (c) => oneRow(c) && c.isHead !== true },
+  { id: 'drop-commit', group: 'rewrite', key: 'ContextMenu-DropCommit', args: none, when: (c) => oneRow(c) && !c.merge && c.hasParent !== false },
+  { id: 'interactive-rebase-children', group: 'rewrite', key: 'ContextMenu-RebaseXChildrenOfShaInteractively', args: (c) => [String(c.childrenCount ?? 0), c.sha.slice(0, 7)], when: (c) => oneRow(c) && c.isHead !== true && (c.childrenCount ?? 0) >= 1 },
+  { id: 'squash-commits', group: 'rewrite', key: 'ContextMenu-SquashXCommits', args: count, when: chain },
+  { id: 'drop-commits', group: 'rewrite', key: 'ContextMenu-DropCommits', args: count, when: chain },
+  { id: 'move-commits-up', group: 'rewrite', key: 'ContextMenu-MoveXCommitsUp', args: count, when: (c) => chain(c) && c.multi?.canMoveUp === true },
+  { id: 'move-commits-down', group: 'rewrite', key: 'ContextMenu-MoveXCommitsDown', args: count, when: (c) => chain(c) && c.multi?.canMoveDown === true },
+  { id: 'cherry-pick-commits', group: 'rewrite', key: 'ContextMenu-CherrypickCommits', args: count, when: (c) => rewritable(c) && !!c.multi && !c.multi.merge && !c.multi.wip },
   // Branch (phase 11)
+  { id: 'solo-branch', group: 'branch', key: 'SoloBranch', args: none, when: (c) => !!c.solo && !c.solo.soloed },
+  { id: 'unsolo-branch', group: 'branch', key: 'LeftPanel-StopSoloing', args: none, when: (c) => !!c.solo?.soloed },
   { id: 'rename-branch', group: 'branch', key: 'ContextMenu-RenameBranch', args: (c) => [branchName(c)], when: onLocal },
   { id: 'delete-branch', group: 'branch', key: 'ContextMenu-DeleteBranch', args: (c) => [branchName(c)], when: (c) => onLocal(c) && !c.branch?.current },
   // Phase 11 decision: GitKraken's own item replaces the spec's checkbox. Only for a branch whose upstream is known.
@@ -135,7 +221,7 @@ export const ITEMS: MenuItemDef[] = [
   { id: 'create-annotated-tag', group: 'tags', key: 'ContextMenu-CreateAnnotatedTag', args: none, when: () => true },
 ];
 
-const GROUP_ORDER: MenuGroup[] = ['stash', 'remote', 'integrate', 'checkout', 'commit', 'branch', 'copy', 'tags'];
+const GROUP_ORDER: MenuGroup[] = ['stash', 'remote', 'integrate', 'checkout', 'commit', 'rewrite', 'branch', 'copy', 'tags'];
 
 function labelOf(def: MenuItemDef, ctx: MenuCtx): string {
   const a = def.args(ctx);
@@ -160,7 +246,7 @@ export function buildMenu(ctx: MenuCtx, handlers: Record<string, () => void>): M
     return { type: 'item', id: def.id, label: labelOf(def, ctx), run: () => run() };
   };
 
-  const out: MenuEntry[] = [];
+  const out: MenuEntry[] = [...tagEntries(ctx, handlers)];
   for (const group of GROUP_ORDER) {
     // A stash target shows only the stash group; every other target never shows it.
     const entries = ITEMS.filter((i) => i.group === group && !i.child && (group === 'stash') === (ctx.target === 'stash'))

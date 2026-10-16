@@ -35,6 +35,11 @@ export default defineConfig({
       GITSLAPPIN_DATA_DIR: dataDir,
       GIT_CONFIG_NOSYSTEM: '1',
       GIT_CONFIG_GLOBAL: emptyGlobalConfig,
+      // Create (init) makes an "Initial commit"; the empty global config has no identity.
+      GIT_AUTHOR_NAME: 'GitSlappin Test',
+      GIT_AUTHOR_EMAIL: 'test@gitslappin.invalid',
+      GIT_COMMITTER_NAME: 'GitSlappin Test',
+      GIT_COMMITTER_EMAIL: 'test@gitslappin.invalid',
       GIT_ASKPASS: failingAskpass,
       SSH_ASKPASS: failingAskpass,
       GCM_INTERACTIVE: 'never',

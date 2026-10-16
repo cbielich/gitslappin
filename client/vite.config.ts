@@ -16,9 +16,11 @@ export default defineConfig({
       '/api': {
         target,
         changeOrigin: true,
+        ws: true,
         configure: (proxy) => {
           // The server only accepts its own origin; rewrite the dev origin.
           proxy.on('proxyReq', (req) => req.setHeader('origin', target));
+          proxy.on('proxyReqWs', (req) => req.setHeader('origin', target));
         },
       },
     },

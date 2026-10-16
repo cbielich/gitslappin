@@ -54,6 +54,19 @@
   --text-bright: #ffffff;
   --text-dimmed: rgba(255, 255, 255, 0.15);
   --text-dimmed-selected: rgba(255, 255, 255, 0.075);
+  /* V5 blame: one colour per commit, picked from 12 hues (BlameFileView) */
+  --blame-0: hsl(0, 65%, 55%);
+  --blame-1: hsl(30, 65%, 55%);
+  --blame-2: hsl(60, 65%, 55%);
+  --blame-3: hsl(90, 65%, 55%);
+  --blame-4: hsl(120, 65%, 55%);
+  --blame-5: hsl(150, 65%, 55%);
+  --blame-6: hsl(180, 65%, 55%);
+  --blame-7: hsl(210, 65%, 55%);
+  --blame-8: hsl(240, 65%, 55%);
+  --blame-9: hsl(270, 65%, 55%);
+  --blame-10: hsl(300, 65%, 55%);
+  --blame-11: hsl(330, 65%, 55%);
   --text-selected-row: #ffffff;
 
   --gkftux-blue: #6eb5ff;
@@ -157,4 +170,30 @@
 
 :root {
   --commit-field-bg: transparent;
+}
+
+/* V6b in-app terminal (terminal__* from dark.jsonc-default; LESS functions pre-computed). */
+:root,
+[data-theme='dark'] {
+  --terminal__background: #131418;
+  --terminal__cursor: var(--blue);
+  --terminal__cursorAccent: #131418;
+  --terminal__foreground: #d8dee9;
+  --terminal__selection: #4d88ff40;
+  --terminal__black: #131418;
+  --terminal__red: #ef6b73;
+  --terminal__green: #3dd68c;
+  --terminal__yellow: #f0c75e;
+  --terminal__blue: #5e9eff;
+  --terminal__magenta: #d176d6;
+  --terminal__cyan: #50c4d8;
+  --terminal__white: #d8dee9;
+  --terminal__brightBlack: #616e88;
+  --terminal__brightRed: #f5939c;
+  --terminal__brightGreen: #6edfa6;
+  --terminal__brightYellow: #f5d88b;
+  --terminal__brightBlue: #89b8ff;
+  --terminal__brightMagenta: #e2a0e8;
+  --terminal__brightCyan: #7cd5e3;
+  --terminal__brightWhite: #eceff4;
 }

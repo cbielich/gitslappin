@@ -26,7 +26,7 @@ function RepoIcon() {
 }
 
 /** Modal folder picker. `start` is the folder typed in the Open box (falls back to the default start folder when it does not exist). */
-export function FolderBrowser({ start, onClose, onOpen }: { start: string; onClose: () => void; onOpen: (path: string) => Promise<void> }) {
+export function FolderBrowser({ start, onClose, onOpen, mode = 'open' }: { start: string; onClose: () => void; onOpen: (path: string) => Promise<void>; mode?: 'open' | 'pick' }) {
   const [result, setResult] = useState<FsListResult | null>(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
@@ -100,7 +100,8 @@ export function FolderBrowser({ start, onClose, onOpen }: { start: string; onClo
   }
 
   const entries = result?.entries ?? [];
-  const activate = (e: FsEntry) => (e.isRepo ? void open(e.path) : void load(e.path));
+  const pick = mode === 'pick'; // pick: every folder is entered, and the footer button picks the folder being shown
+  const activate = (e: FsEntry) => (e.isRepo && !pick ? void open(e.path) : void load(e.path));
   const up = () => result?.parent && void load(result.parent);
 
   function onKeyDown(ev: KeyboardEvent) {
@@ -125,9 +126,9 @@ export function FolderBrowser({ start, onClose, onOpen }: { start: string; onClo
 
   return (
     <div className="fb-scrim">
-      <div className="fb-modal" data-testid="folder-browser" role="dialog" aria-label="Select a repository to open" onKeyDown={trapTab}>
+      <div className="fb-modal" data-testid="folder-browser" role="dialog" aria-label={pick ? 'Select a folder' : 'Select a repository to open'} onKeyDown={trapTab}>
         <h3 className="fb-title" data-testid="folder-browser-title">
-          Select a repository to open
+          {pick ? 'Select a folder' : 'Select a repository to open'}
         </h3>
         <div className="fb-bar">
           <button type="button" className="btn" data-testid="folder-browser-up" disabled={!result?.parent} onClick={up}>
@@ -186,10 +187,10 @@ export function FolderBrowser({ start, onClose, onOpen }: { start: string; onClo
             type="button"
             className="btn btn-success"
             data-testid="folder-browser-open"
-            disabled={busy || !(selected ?? result?.path)}
-            onClick={() => void open(selected ?? result?.path ?? '')}
+            disabled={busy || !(pick ? result?.path : (selected ?? result?.path))}
+            onClick={() => void open(pick ? (result?.display ?? '') : (selected ?? result?.path ?? ''))}
           >
-            Open
+            {pick ? 'Select Folder' /* invented: GitKraken has no string for it */ : 'Open'}
           </button>
         </div>
       </div>

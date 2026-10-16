@@ -1,0 +1,264 @@
+/* V5: Compare commits (multi select panel), File History and blame */
+.compare-header {
+  text-align: center;
+  padding: 8px 12px 4px;
+  font-size: var(--fs-3);
+  color: var(--text-selected);
+}
+
+.compare-title {
+  text-align: center;
+  padding: 4px 12px 8px;
+  color: var(--text-secondary);
+}
+
+.compare-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 12px 8px;
+}
+
+.compare-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--app__bg0);
+  border: 1px solid var(--subtle-border);
+  border-radius: 4px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
+}
+
+.compare-card-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.compare-card-summary {
+  color: var(--text-selected);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compare-card-meta {
+  font-size: var(--fs-1);
+  color: var(--text-secondary);
+}
+
+.compare-card-sha {
+  color: var(--text-secondary);
+  font-size: var(--fs-1);
+}
+
+.compare-more {
+  padding: 4px 8px;
+  color: var(--text-secondary);
+  font-size: var(--fs-1);
+}
+
+.file-history {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--code-bg);
+}
+
+.file-history-head {
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: var(--toolbar__bg0);
+  border-bottom: 1px solid var(--section-border);
+  font-size: var(--fs-3);
+}
+
+.file-history-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.file-history-list {
+  width: 340px;
+  flex: none;
+  overflow: auto;
+  border-right: 1px solid var(--section-border);
+}
+
+.file-history-entry {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: none;
+  border: 0;
+  text-align: left;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.file-history-entry:hover {
+  background: var(--glass-inverse-10);
+}
+
+.file-history-entry.selected {
+  background: var(--primary-bg);
+}
+
+.file-history-entry-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-history-summary {
+  color: var(--text-selected);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-history-meta,
+.file-history-sha {
+  font-size: var(--fs-1);
+  color: var(--text-secondary);
+}
+
+.file-history-added {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--section-border);
+  font-size: var(--fs-1);
+}
+
+.file-history-added-label {
+  color: var(--green);
+}
+
+.file-history-end {
+  text-align: center;
+  padding: 6px;
+  color: var(--text-secondary);
+}
+
+.file-history-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-history-file-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.blame-file {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.blame-editor {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.blame-gutter {
+  flex: none;
+  width: 30px;
+  overflow: hidden;
+  position: relative;
+  font-size: var(--fs-1);
+  color: var(--text-secondary);
+}
+
+.blame-gutter.wide {
+  width: 300px;
+}
+
+.blame-gutter-inner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+}
+
+.blame-run {
+  position: absolute;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding-left: 6px;
+  border-left: 3px solid transparent;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.blame-avatar {
+  flex: none;
+  image-rendering: pixelated;
+  margin-top: 1px;
+}
+
+.blame-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-normal);
+}
+
+.blame-date {
+  flex: none;
+  padding-right: 6px;
+}
+
+/* V5c hide / solo */
+.sb-eye {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 2px;
+  opacity: 0;
+  color: var(--text-disabled);
+  cursor: pointer;
+}
+.sb-item:hover .sb-eye,
+.sb-item[data-hidden='true'] .sb-eye {
+  opacity: 1;
+}
+.sb-item[data-hidden='true'] .sb-item-name {
+  opacity: 0.5;
+}
+.viewing-btn {
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 11px;
+  background: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.8;
+}
+.viewing-btn:hover {
+  opacity: 1;
+}

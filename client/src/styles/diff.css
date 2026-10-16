@@ -314,3 +314,8 @@
 [data-theme='light'] .diff-view {
   background: var(--code-bg);
 }
+
+.diff-tool-text {
+  width: auto;
+  padding: 0 10px;
+}

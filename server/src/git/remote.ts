@@ -1,14 +1,17 @@
-import { branchNameProblem, type OpState, type PullMode, type RemoteInfo } from '@gitslappin/shared';
+import { createHash } from 'node:crypto';
+import { branchNameProblem, remoteUrlProblem, type OpState, type PullMode, type RemoteInfo } from '@gitslappin/shared';
+import type { PathPair } from '../pathMap';
 import { repoIdFor } from '../state/registry';
 import { readOpState } from './opState';
-import { runExclusive } from './queue';
+import { registerYield, repoBusy, runExclusive } from './queue';
+import { remoteUrlRootsProblem } from './remoteRoots';
 import { runGit, type EnvOverride, type GitResult } from './runner';
 import { scrubSecrets } from './scrub';
 
 /*
  * Fetch, pull, push and upstream (phase 7). Every function except listRemotes runs inside one runExclusive for the
  * repo, runs git with `-c protocol.ext.allow=never` and an empty stdin, and returns a RemoteResult. None throws for a
- * git failure. Nothing here ever force-pushes, deletes a remote ref, or stashes.
+ * git failure. Nothing here ever force-pushes, deletes a remote ref, or stashes. (V2: tagOps.ts has the one scoped `--delete`, for a tag.)
  */
 
 export interface RemoteResult {
@@ -24,13 +27,15 @@ export interface RemoteResult {
   target?: string;
   /** With `rejected`: git said "fetch first" (the remote has commits this repository has not fetched), so a lease on `expect` cannot work yet. */
   fetchFirst?: boolean;
+  /** With `done` of remote/add: the remote was added but the fetch right after it failed (scrubbed text). */
+  fetchFailed?: string;
   op?: OpState;
   /** 'detached' = HEAD is detached; otherwise another operation is in progress. */
   blockedBy?: 'detached' | 'op';
 }
 
 const TIMEOUT_MS = 5 * 60 * 1000;
-const SAFE_ARGS = [
+export const SAFE_ARGS = [
   '-c',
   'protocol.ext.allow=never',
   '-c',
@@ -55,11 +60,11 @@ export interface Remote {
   urls: string[];
 }
 
-const plain = (root: string, repoId: string) => ({ cwd: root, repoId });
+const plain = (root: string, repoId: string | undefined) => (repoId === undefined ? { cwd: root } : { cwd: root, repoId });
 export const net = (root: string, repoId: string, args: string[]): Promise<GitResult> =>
   runGit([...SAFE_ARGS, ...args], { cwd: root, repoId, timeoutMs: TIMEOUT_MS, input: '', env: ENV });
 
-export async function readRemotes(root: string, repoId: string): Promise<Remote[]> {
+export async function readRemotes(root: string, repoId: string | undefined): Promise<Remote[]> {
   const names = await runGit(['remote'], plain(root, repoId));
   if (names.code !== 0) return [];
   const list: Remote[] = names.stdout
@@ -135,6 +140,102 @@ export function fetchAll(root: string): Promise<RemoteResult> {
   });
 }
 
+/** The names git is willing to use as a remote name: fixed text rules, then git's own ref rule. */
+async function remoteNameProblem(root: string, repoId: string, name: unknown): Promise<string | null> {
+  const bad = 'That is not a valid remote name.';
+  // eslint-disable-next-line no-control-regex
+  if (typeof name !== 'string' || name === '' || name.length > 255 || name.startsWith('-') || /[\x00-\x1f\x7f]/.test(name)) return bad;
+  const fmt = await runGit(['check-ref-format', `refs/remotes/${name}/x`], plain(root, repoId));
+  return fmt.code === 0 ? null : bad;
+}
+
+/**
+ * V2 Add Remote: the name and both URLs are checked before git sees them (pure rules, then the roots rule), then
+ * `remote add -- <n> <url>`, `remote set-url --push` when the push URL differs, the "::" check, and a user-started fetch of the new remote.
+ */
+export function addRemote(root: string, opts: { name: unknown; url: unknown; pushUrl?: unknown }, ctx: { roots: string[]; pathMap: PathPair[] }): Promise<RemoteResult> {
+  const repoId = repoIdFor(root);
+  return runExclusive<RemoteResult>(repoId, async () => {
+    if (typeof opts.name !== 'string' || typeof opts.url !== 'string' || (opts.pushUrl !== undefined && typeof opts.pushUrl !== 'string')) return refused('Invalid request.');
+    const { name, url } = opts;
+    const pushUrl = opts.pushUrl; // absent = none; a present value (even an empty one) goes through the same checks
+    const nameProblem = await remoteNameProblem(root, repoId, name);
+    if (nameProblem) return refused(nameProblem);
+    for (const u of pushUrl === undefined ? [url] : [url, pushUrl]) {
+      const problem = remoteUrlProblem(u) ?? remoteUrlRootsProblem(u, ctx.roots, ctx.pathMap);
+      if (problem) return refused(problem);
+    }
+    if ((await readRemotes(root, repoId)).some((r) => r.name === name)) return refused(`A remote named '${name}' already exists.`);
+
+    const add = await runGit(['remote', 'add', '--', name, url], plain(root, repoId));
+    if (add.code !== 0) return failed(add, 'git remote add failed.');
+    if (pushUrl !== undefined && pushUrl !== url) {
+      const set = await runGit(['remote', 'set-url', '--push', '--', name, pushUrl], plain(root, repoId));
+      if (set.code !== 0) return failed(set, 'git remote set-url failed.'); // the remote stays
+    }
+    const added = (await readRemotes(root, repoId)).find((r) => r.name === name);
+    if (!added) return failed({ code: 1, stdout: '', stderr: 'The remote was not found after it was added.' }, 'git remote add failed.');
+    if (hasExtUrl(added)) return refused(`The remote '${name}' has a URL that is not supported.`);
+    const fetched = await net(root, repoId, ['fetch', '--', name]);
+    if (fetched.code === 0) return { outcome: 'done' };
+    return { outcome: 'done', fetchFailed: failed(fetched, 'git fetch failed.').stderr ?? 'git fetch failed.' };
+  });
+}
+
+export type AutoFetchResult = { outcome: 'done'; changed: boolean } | { outcome: 'skipped' } | { outcome: 'failed' };
+const AUTO_TIMEOUT_MS = 30_000;
+
+/** Hash of every ref name and sha. Not in the command log (no repoId). null when git failed. */
+async function refsHash(root: string): Promise<string | null> {
+  const r = await runGit(['for-each-ref', '--format=%(refname) %(objectname)'], { cwd: root, timeoutMs: AUTO_TIMEOUT_MS });
+  return r.code === 0 ? createHash('sha1').update(r.stdout).digest('hex') : null;
+}
+
+/**
+ * V2 auto-fetch: `fetch --all --no-prune` with the no-prompt environment, a 30 s limit, and no command-log entry. It never queues: a busy
+ * repo is 'skipped'. It gives way: when a user action asks for the repo's lock the process tree is killed and the answer is 'skipped'.
+ * It never carries an error text. `env` comes only from the server.
+ */
+export async function autoFetch(root: string, env: EnvOverride): Promise<AutoFetchResult> {
+  const repoId = repoIdFor(root);
+  if (repoBusy(repoId)) return { outcome: 'skipped' };
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const unregister = registerYield(repoId, () => ctrl.abort());
+  try {
+    return await runExclusive<AutoFetchResult>(
+      repoId,
+      async () => {
+        if (ctrl.signal.aborted) return { outcome: 'skipped' };
+        const remotes = await readRemotes(root, undefined);
+        if (remotes.length === 0 || remotes.some((r) => r.name.startsWith('-') || hasExtUrl(r))) return { outcome: 'skipped' };
+        const before = await refsHash(root);
+        if (ctrl.signal.aborted) return { outcome: 'skipped' };
+        const timer = setTimeout(() => {
+          timedOut = true;
+          ctrl.abort();
+        }, AUTO_TIMEOUT_MS);
+        let res: GitResult;
+        try {
+          // No --prune: a scheduled fetch never deletes a remote-tracking ref. --no-prune also beats fetch.prune / remote.<n>.prune in the config.
+          res = await runGit([...SAFE_ARGS, 'fetch', '--all', '--no-prune'], { cwd: root, timeoutMs: AUTO_TIMEOUT_MS + 5_000, input: '', env: { ...ENV, ...env }, signal: ctrl.signal });
+        } finally {
+          clearTimeout(timer);
+        }
+        if (ctrl.signal.aborted && !timedOut) return { outcome: 'skipped' };
+        if (res.code !== 0) return { outcome: 'failed' };
+        const after = await refsHash(root);
+        return { outcome: 'done', changed: before === null || after === null || before !== after };
+      },
+      { keepRedo: true, background: true },
+    );
+  } catch {
+    return { outcome: 'failed' };
+  } finally {
+    unregister();
+  }
+}
+
 export function pullRemote(root: string, opts: { mode: PullMode; branch?: string }): Promise<RemoteResult> {
   const repoId = repoIdFor(root);
   return runExclusive<RemoteResult>(repoId, async () => {
@@ -170,7 +271,7 @@ export function pullRemote(root: string, opts: { mode: PullMode; branch?: string
   });
 }
 
-export function pushRemote(root: string, opts: { branch?: string; remote?: string; remoteBranch?: string }): Promise<RemoteResult> {
+export function pushRemote(root: string, opts: { branch?: string; remote?: string; remoteBranch?: string; upstream?: boolean }): Promise<RemoteResult> {
   const repoId = repoIdFor(root);
   return runExclusive<RemoteResult>(repoId, async () => {
     if (await readOpState(root)) return { outcome: 'blocked', error: 'Another operation is in progress.', blockedBy: 'op' };
@@ -196,7 +297,7 @@ export function pushRemote(root: string, opts: { branch?: string; remote?: strin
       if (!(await validRef(root, repoId, dest))) return refused('The given branch name is not valid');
       remote = found;
       rb = dest;
-      setUpstream = true;
+      setUpstream = opts.upstream !== false;
     } else {
       if (opts.remoteBranch !== undefined) return refused('A remote branch needs a remote.');
       const up = await upstreamOf(root, repoId, local, remotes);

@@ -9,8 +9,12 @@
     "start": "tsx src/index.ts"
   },
   "dependencies": {
-    "@gitslappin/shared": "*",
     "@fastify/static": "^8.0.0",
+    "@fastify/websocket": "11.3.1",
+    "@gitslappin/shared": "*",
     "fastify": "^5.0.0"
+  },
+  "optionalDependencies": {
+    "node-pty": "1.1.0"
   }
 }

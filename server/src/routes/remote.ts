@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { RemoteResponse } from '@gitslappin/shared';
-import { fetchAll, listRemotes, pullRemote, pushRemote, setUpstream, type RemoteResult } from '../git/remote';
+import { noPromptEnv } from '../git/askpass';
+import { addRemote, autoFetch, fetchAll, listRemotes, pullRemote, pushRemote, setUpstream, type RemoteResult } from '../git/remote';
 import { scrubSecrets } from '../git/scrub';
+import type { PathPair } from '../pathMap';
 import { readPrefs, updatePrefs } from '../prefs';
 import type { RepoRegistry } from '../state/registry';
 
@@ -16,7 +18,7 @@ const optString = (v: unknown): boolean => v === undefined || typeof v === 'stri
 function send(reply: FastifyReply, r: RemoteResult) {
   switch (r.outcome) {
     case 'done':
-      return reply.send({ outcome: 'done' } satisfies RemoteResponse);
+      return reply.send({ outcome: 'done', ...(r.fetchFailed !== undefined ? { fetchFailed: scrubSecrets(r.fetchFailed) } : {}) } satisfies RemoteResponse);
     case 'conflict':
       return reply.send({ outcome: 'conflict', ...(r.op ? { op: r.op } : {}) });
     case 'needs-upstream':
@@ -34,7 +36,12 @@ function send(reply: FastifyReply, r: RemoteResult) {
   }
 }
 
-export function registerRemoteRoutes(app: FastifyInstance, registry: RepoRegistry, dataDir: string): void {
+export function registerRemoteRoutes(
+  app: FastifyInstance,
+  registry: RepoRegistry,
+  dataDir: string,
+  opts: { askpass?: string | undefined; roots?: string[]; pathMap?: PathPair[] } = {},
+): void {
   const rootOf = (id: string, reply: FastifyReply): string | null => {
     const root = registry.rootOf(id);
     if (!root) void reply.code(404).send({ error: 'Unknown repository.' });
@@ -47,9 +54,23 @@ export function registerRemoteRoutes(app: FastifyInstance, registry: RepoRegistr
     return root ? await listRemotes(root) : reply;
   });
 
-  app.post<{ Params: { id: string } }>('/api/repos/:id/fetch', async (req, reply) => {
+  // {auto:true} (a boolean true, nothing else is read) is the quiet background fetch; anything else is the user's Fetch All.
+  app.post<{ Params: { id: string }; Body: unknown }>('/api/repos/:id/fetch', { bodyLimit: 4 * 1024 }, async (req, reply) => {
     const root = rootOf(req.params.id, reply);
-    return root ? send(reply, await fetchAll(root)) : reply;
+    if (!root) return reply;
+    if (obj(req.body)?.auto === true) {
+      if (!opts.askpass) return reply.send({ outcome: 'skipped' }); // never fetch in the background without the no-prompt environment
+      return reply.send(await autoFetch(root, noPromptEnv(opts.askpass)));
+    }
+    return send(reply, await fetchAll(root));
+  });
+
+  app.post<{ Params: { id: string }; Body: unknown }>('/api/repos/:id/remote/add', { bodyLimit: 16 * 1024 }, async (req, reply) => {
+    const root = rootOf(req.params.id, reply);
+    if (!root) return reply;
+    const body = obj(req.body);
+    if (!body || typeof body.name !== 'string' || typeof body.url !== 'string' || !optString(body.pushUrl)) return invalid(reply);
+    return send(reply, await addRemote(root, { name: body.name, url: body.url, ...(typeof body.pushUrl === 'string' ? { pushUrl: body.pushUrl } : {}) }, { roots: opts.roots ?? [], pathMap: opts.pathMap ?? [] }));
   });
 
   app.post<{ Params: { id: string }; Body: unknown }>('/api/repos/:id/pull', { bodyLimit: 64 * 1024 }, async (req, reply) => {
@@ -65,12 +86,14 @@ export function registerRemoteRoutes(app: FastifyInstance, registry: RepoRegistr
     if (!root) return reply;
     const body = obj(req.body) ?? {};
     if (!optString(body.branch) || !optString(body.remote) || !optString(body.remoteBranch)) return invalid(reply);
+    if ('upstream' in body && typeof body.upstream !== 'boolean') return invalid(reply);
     return send(
       reply,
       await pushRemote(root, {
         ...(typeof body.branch === 'string' ? { branch: body.branch } : {}),
         ...(typeof body.remote === 'string' ? { remote: body.remote } : {}),
         ...(typeof body.remoteBranch === 'string' ? { remoteBranch: body.remoteBranch } : {}),
+        ...(body.upstream === false ? { upstream: false } : {}),
       }),
     );
   });

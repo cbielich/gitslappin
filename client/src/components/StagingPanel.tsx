@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, GitCommitHorizontal, Inbox, List, ListTree, Minus, Pencil, Plus, ArrowDownAZ, Trash2 } from 'lucide-react';
-import type { StatusSummary, WipFile } from '@gitslappin/shared';
+import { ignorePattern, type IgnoreMode, type StatusSummary, type WipFile } from '@gitslappin/shared';
+import type { MenuEntry } from '../lib/refMenu';
+import { IgnoreBar } from './IgnoreBar';
 import { readJson, writeJson } from '../lib/storage';
 import type { OpenFileHook } from './DetailsPanel';
 import { FileList, displayStatus, type Side } from './FileList';
@@ -30,12 +32,18 @@ interface Props {
   onStageAll: () => void;
   onUnstageAll: () => void;
   onCommit: () => void;
+  /** V6 Ctrl+Shift+Enter in the message field: stage everything, then commit. */
+  onCommitAll: () => void;
+  /** Runs a key action now, or when the running change is over. */
+  whenIdle: (fn: () => void) => void;
   /** Stash tab: stashes the staged files with this message. Resolves true when a stash was made (the boxes clear). */
   onStash: (message: string) => Promise<boolean>;
   /** Phase 11: the caller shows the confirm bar for these paths (one file or the selection). */
   onDiscard: (paths: string[]) => void;
   /** Phase 11: the trash button of the Unstaged section. */
   onDiscardAll: () => void;
+  /** V3: write the ignore pattern for these paths (the server builds the pattern text). */
+  onIgnore: (paths: string[], mode: IgnoreMode, untrack: boolean) => Promise<unknown> | void;
 }
 
 /** The Stash tab button text (CommitDetailPanel-Tab-Stash-ActionLabel*). */
@@ -70,7 +78,10 @@ export function StagingPanel(p: Props) {
 
   // Selection for the Discard changes menu (ctrl+click adds or removes; a plain click selects just that file).
   const [selection, setSelection] = useState<ReadonlySet<string>>(new Set());
-  const [fileMenu, setFileMenu] = useState<{ x: number; y: number; paths: string[] } | null>(null);
+  const [fileMenu, setFileMenu] = useState<{ x: number; y: number; paths: string[]; side: Side } | null>(null);
+  // V3 Ignore: a tree folder menu, and the confirm bar for a tracked target.
+  const [dirMenu, setDirMenu] = useState<{ x: number; y: number; dir: string } | null>(null);
+  const [ask, setAsk] = useState<{ paths: string[]; mode: IgnoreMode; name: string } | null>(null);
   const known = useMemo(() => new Set(wip.files.map((f) => f.path)), [wip.files]);
   const liveSelection = useMemo(() => new Set([...selection].filter((x) => known.has(x))), [selection, known]);
   const toggle = useCallback((f: WipFile) => {
@@ -82,13 +93,43 @@ export function StagingPanel(p: Props) {
     });
   }, []);
   const onContext = useCallback(
-    (f: WipFile, x: number, y: number) => {
+    (f: WipFile, x: number, y: number, side: Side) => {
       const paths = liveSelection.has(f.path) ? [...liveSelection] : [f.path];
       if (!liveSelection.has(f.path)) setSelection(new Set([f.path]));
-      setFileMenu({ x, y, paths });
+      setFileMenu({ x, y, paths, side });
     },
     [liveSelection],
   );
+
+  const base = (p: string): string => p.slice(p.lastIndexOf('/') + 1);
+  /** Untracked-only targets are written at once; a tracked one asks first (PromptIgnore-*). */
+  const askIgnore = (paths: string[], mode: IgnoreMode, name: string, changed: string[] = paths) => {
+    if (paths.length === 0) return;
+    const byPath = new Map(unstaged.map((f) => [f.path, f]));
+    if (changed.some((x) => byPath.get(x)?.worktreeStatus !== '?')) setAsk({ paths, mode, name });
+    else p.onIgnore(paths, mode, false);
+  };
+  /** Ignore menu entries for the unstaged rows (IgnoreFile, AllFilesWithSameExtension, AllFilesInFolder, IgnoreNFiles). */
+  const ignoreEntries = (paths: string[]): MenuEntry[] => {
+    const ok = new Set(unstaged.filter((f) => f.worktreeStatus !== 'U' && !f.path.endsWith('/')).map((f) => f.path));
+    const targets = paths.filter((x) => ok.has(x));
+    if (targets.length === 0) return [];
+    const first = targets[0] as string;
+    if (targets.length > 1) return [{ type: 'item', id: 'ignore-n', label: `Ignore ${targets.length} files`, run: () => askIgnore(targets, 'file', `${targets.length} files`) }];
+    const sub: MenuEntry[] = [{ type: 'item', id: 'ignore-file', label: `Ignore '${base(first)}'`, run: () => askIgnore([first], 'file', base(first)) }];
+    const ext = ignorePattern(first, 'ext');
+    if (ext) sub.push({ type: 'item', id: 'ignore-ext', label: `All files with the extension '${ext.slice(1)}'`, run: () => askIgnore([first], 'ext', ext) });
+    if (ignorePattern(first, 'folder')) {
+      const dir = first.slice(0, first.lastIndexOf('/'));
+      sub.push({ type: 'item', id: 'ignore-folder', label: `All files in '${base(dir)}/'`, run: () => askIgnore([dir], 'folder', `${base(dir)}/`, [first]) });
+    }
+    return [{ type: 'item', id: 'ignore', label: 'Ignore', run: () => undefined, submenu: sub }];
+  };
+  const dirEntries = (dir: string): MenuEntry[] => {
+    const under = unstaged.filter((f) => f.worktreeStatus !== 'U' && !f.path.endsWith('/') && f.path.startsWith(`${dir}/`)).map((f) => f.path);
+    if (under.length === 0) return [];
+    return [{ type: 'item', id: 'ignore-dir', label: `Ignore all files in '${base(dir)}/'`, run: () => askIgnore([dir], 'folder', `${base(dir)}/`, under) }];
+  };
 
   const open = useCallback(
     (side: Side) => (f: WipFile) => {
@@ -137,6 +178,32 @@ export function StagingPanel(p: Props) {
     return true;
   };
   useEffect(() => registerShortcut('commit', () => commitNow.current()), []);
+  // V6: Ctrl+Shift+Enter (message field only) stages all and commits; S / U stage / unstage the selected file(s). The registry blocks repeats and open bars.
+  const keysNow = useRef({ unstaged, staged, sel: liveSelection, onStageFile: p.onStageFile, onUnstageFile: p.onUnstageFile });
+  keysNow.current = { unstaged, staged, sel: liveSelection, onStageFile: p.onStageFile, onUnstageFile: p.onUnstageFile };
+  const keys = useRef<{ commitAll: () => boolean; stage: () => boolean; unstage: () => boolean }>({ commitAll: () => false, stage: () => false, unstage: () => false });
+  keys.current = {
+    commitAll: () => {
+      if (tab !== 'commit' || p.summary.trim() === '' || p.busy || conflicts || (wip.total === 0 && !p.amend)) return false;
+      p.onCommitAll();
+      return true;
+    },
+    stage: () => {
+      if (conflicts) return false;
+      const paths = new Set(keysNow.current.sel); // the selection the user saw at key press; the file itself is looked up when the queue runs
+      if (paths.size > 0) p.whenIdle(() => { const f = keysNow.current.unstaged.find((x) => paths.has(x.path)); if (f) keysNow.current.onStageFile(f); });
+      return true;
+    },
+    unstage: () => {
+      const paths = new Set(keysNow.current.sel);
+      if (paths.size > 0) p.whenIdle(() => { const f = keysNow.current.staged.find((x) => paths.has(x.path)); if (f) keysNow.current.onUnstageFile(f); });
+      return true;
+    },
+  };
+  useEffect(() => {
+    const offs = [registerShortcut('commitStageAll', () => keys.current.commitAll()), registerShortcut('stageFile', () => keys.current.stage()), registerShortcut('unstageFile', () => keys.current.unstage())];
+    return () => offs.forEach((off) => off());
+  }, []);
 
   const stashLabel = stashButtonLabel(stashSummary, wip.stagedCount);
   const canStash = stashSummary.trim() !== '' && wip.stagedCount > 0 && !p.busy;
@@ -171,7 +238,7 @@ export function StagingPanel(p: Props) {
         )}
       </div>
       <div className="wip-section-body">
-        <FileList files={files} side={side} mode={mode} onOpen={open(side)} onAction={side === 'unstaged' ? p.onStageFile : p.onUnstageFile} disabled={p.busy} selection={liveSelection} onToggle={toggle} onContext={onContext} />
+        <FileList files={files} side={side} mode={mode} onOpen={open(side)} onAction={side === 'unstaged' ? p.onStageFile : p.onUnstageFile} disabled={p.busy} selection={liveSelection} onToggle={toggle} onContext={(f, x, y) => onContext(f, x, y, side)} {...(side === 'unstaged' && mode === 'tree' ? { onDirContext: (dir: string, x: number, y: number) => setDirMenu({ x, y, dir }) } : {})} />
       </div>
     </div>
   );
@@ -224,8 +291,20 @@ export function StagingPanel(p: Props) {
         <ContextMenu
           x={fileMenu.x}
           y={fileMenu.y}
-          entries={[{ type: 'item', id: 'discard-changes', label: 'Discard changes', run: () => p.onDiscard(fileMenu.paths) }]} // File-Reset
+          entries={[
+            { type: 'item', id: 'discard-changes', label: 'Discard changes', run: () => p.onDiscard(fileMenu.paths) }, // File-Reset
+            ...(fileMenu.side === 'unstaged' ? ignoreEntries(fileMenu.paths) : []),
+          ]}
           onClose={() => setFileMenu(null)}
+        />
+      )}
+      {dirMenu && <ContextMenu x={dirMenu.x} y={dirMenu.y} entries={dirEntries(dirMenu.dir)} onClose={() => setDirMenu(null)} />}
+      {ask && (
+        <IgnoreBar
+          message={ask.paths.length === 1 || ask.mode === 'folder' ? `Ignore '${ask.name}'?` : `Ignore ${ask.paths.length} files?`}
+          onIgnore={() => void Promise.resolve(p.onIgnore(ask.paths, ask.mode, false)).finally(() => setAsk(null))}
+          onIgnoreUntrack={() => void Promise.resolve(p.onIgnore(ask.paths, ask.mode, true)).finally(() => setAsk(null))}
+          onCancel={() => setAsk(null)}
         />
       )}
       <div className="commit-panel">

@@ -2,6 +2,16 @@
 
 A local, GitKraken-style git GUI. A Node server listens on 127.0.0.1 and the UI opens in a browser app window.
 
+## Features
+- History graph, diff viewer, staging (file, hunk and line), commit, branches, merge, rebase, stash, undo/redo, cherry-pick, revert, tags, three-pane merge tool.
+- Clone (shallow, sparse) and Create a repo, with .gitignore templates and licenses.
+- Add Remote, push/delete tags, ahead/behind badges, auto-fetch (Preferences, default 1 minute, no prune).
+- Ignore and Ignore and Stop Tracking from the file menu.
+- History rewriting: Update Message, Squash, Interactive Rebase (Pick/Reword/Squash/Drop), Drop/Move commits, multi cherry-pick. A rebase is not undoable.
+- Viewing: compare commits, File History and Blame, Hide/Solo branches.
+- Drag a branch onto another for Merge, Rebase or Push; full keyboard shortcuts (Ctrl+/ lists them); command palette (Ctrl+P); working menu bar.
+- In-app terminal panel (Terminal button or Ctrl+`). Security: local only. It needs Windows, the server bound to 127.0.0.1 and a one-time ticket over a WebSocket, and it is always off in Docker.
+
 ## Requirements
 - Node 24
 - git 2.26 or newer (the server checks this at startup)
