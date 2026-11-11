@@ -55,6 +55,9 @@ test.describe('commit graph', () => {
     const merge = rowWithSubject(page, "Merge branch 'feature/login'");
     await expect(merge.locator('[data-node="merge"]')).toHaveCount(1);
     await expect(rowWithSubject(page, 'Add login form').locator('[data-node="commit"]')).toHaveCount(1);
+    // Hovering a node shows the author's name in a tooltip.
+    await rowWithSubject(page, 'Add login form').getByTestId('graph-node').hover();
+    await expect(page.getByTestId('node-tooltip')).not.toHaveText('');
     // Stash shows as a dashed square node.
     await expect(page.locator('[data-testid="commit-row"][data-stash="true"]')).toHaveCount(1);
 

@@ -559,19 +559,18 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
       const merge = (commitsRef.current.find((c) => c.sha === req.sha)?.parents.length ?? 0) > 1;
       const ctx: MenuCtx = { ...req, head: { branch: refsRef.current?.branch ?? null }, inProgress: !!wipRef.current?.op, merge, ...(req.tag ? { remotes: remoteNamesRef.current } : {}), ...rewriteCtx(req) };
       const b = req.branch;
-      // Fast-forward needs one question to the server (is HEAD an ancestor of the branch?). If the status has not
-      // arrived yet, wait for it, so a stopped merge or rebase is never missed. Otherwise the menu shows at once.
+      // The menu opens at once with what is known. Fast-forward needs one question to the server (is HEAD an
+      // ancestor of the branch?), and a missing status must be loaded so a stopped merge or rebase is never missed;
+      // when those answers arrive, the open menu is updated in place (unless it was closed or replaced meanwhile).
       const needFf = !!b && !b.current && ctx.head.branch !== null && !ctx.inProgress;
-      if (!needFf && wipRef.current) {
-        setMenu({ x, y, ctx });
-        return;
-      }
+      setMenu({ x, y, ctx });
+      if (!needFf && wipRef.current) return;
       const status = wipRef.current ? Promise.resolve(wipRef.current) : loadStatus();
       const ff = needFf && b ? api.canFastForward(repo.id, b.name).then((r) => r.canFastForward, () => false) : Promise.resolve(false);
       void Promise.all([status, ff]).then(([s, canFastForward]) => {
         if (id !== menuReq.current) return;
         const inProgress = !!s?.op;
-        setMenu({ x, y, ctx: { ...ctx, inProgress, canFastForward: canFastForward && !inProgress } });
+        setMenu((m) => (m && m.ctx.sha === ctx.sha && m.x === x && m.y === y ? { x, y, ctx: { ...ctx, inProgress, canFastForward: canFastForward && !inProgress } } : m));
       });
     },
     [repo.id, loadStatus],

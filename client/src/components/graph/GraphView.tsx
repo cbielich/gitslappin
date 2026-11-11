@@ -154,7 +154,7 @@ const CommitRow = memo(function CommitRow({ row, commit, index, top, selected, m
       </div>
       <div className="cell cell-graph">
         <div className="lane-band" style={{ left: laneX(row.lane) }} />
-        <LaneSvg row={row} email={commit.authorEmail} idKey={String(index)} showConnector={pills.length > 0} current={current} />
+        <LaneSvg row={row} email={commit.authorEmail} author={commit.authorName} idKey={String(index)} showConnector={pills.length > 0} current={current} />
       </div>
       <div className="cell cell-msg">
         <span className="commit-subject" data-testid="commit-message">

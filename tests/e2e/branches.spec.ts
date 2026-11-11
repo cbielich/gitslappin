@@ -189,6 +189,22 @@ test.describe('context menus', () => {
     ]);
   });
 
+  test('branch pill menu opens at once while the fast-forward check is still pending', async ({ page }) => {
+    const fx = createBranchRepo();
+    await openGraph(page, fx.repo);
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((r) => (release = r));
+    await page.route('**/can-fast-forward**', async (route) => {
+      await held;
+      await route.continue();
+    });
+    await pill(page, 'feature/one').click({ button: 'right' });
+    await expect(page.getByTestId('context-menu')).toBeVisible({ timeout: 1000 });
+    await expect(menuItem(page, 'Checkout')).toBeVisible();
+    release();
+    await expect(page.getByTestId('context-menu')).toBeVisible();
+  });
+
   test('commit row menu: Checkout this commit, Create branch here, Copy commit sha', async ({ page }) => {
     const fx = createBranchRepo();
     await openGraph(page, fx.repo);

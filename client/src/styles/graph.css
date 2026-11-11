@@ -331,6 +331,20 @@
   overflow: visible;
 }
 
+.node-tooltip {
+  position: fixed;
+  transform: translateY(-50%);
+  z-index: 1000;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--app__bg0);
+  border: 1px solid var(--text-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .lane-band {
   position: absolute;
   top: 1px;

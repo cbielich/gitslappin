@@ -1,4 +1,6 @@
 import type { GraphRow } from '@gitslappin/shared';
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { identiconUri } from '../../lib/identicon';
 
 export const ROW_H = 22;
@@ -38,16 +40,20 @@ const line = (color: number, dashed = false) => ({
 interface Props {
   row: GraphRow;
   email: string;
+  /** Shown as the node's hover tooltip, like GitKraken. */
+  author?: string;
   idKey: string;
   showConnector: boolean;
   current: boolean;
 }
 
-export function LaneSvg({ row, email, idKey, showConnector, current }: Props) {
+export function LaneSvg({ row, email, author, idKey, showConnector, current }: Props) {
   const x = laneX(row.lane);
   const width = laneX(row.laneCount) + LANE_W;
   const clipId = `clip-${idKey}`;
+  const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
   return (
+    <>
     <svg className="lane-svg" width={width} height={ROW_H} aria-hidden="true">
       {showConnector && <line x1={0} x2={x} y1={MID} y2={MID} style={{ stroke: laneVar(row.color), strokeWidth: 1 }} />}
       {row.through.map((t) => (
@@ -59,7 +65,15 @@ export function LaneSvg({ row, email, idKey, showConnector, current }: Props) {
       {row.outgoing.map((e, i) => (
         <path key={`o${i}`} d={outgoingPath(row.lane, e.lane)} style={line(e.color, row.stash)} />
       ))}
-      <g transform={`translate(${x} ${MID})`}>
+      <g
+        transform={`translate(${x} ${MID})`}
+        data-testid="graph-node"
+        onMouseEnter={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          if (author) setTip({ x: r.right + 6, y: r.top + r.height / 2 });
+        }}
+        onMouseLeave={() => setTip(null)}
+      >
         {row.stash ? (
           <>
             <rect x={-8} y={-8} width={16} height={16} rx={2} className="stash-node" style={{ stroke: laneVar(row.color) }} />
@@ -78,6 +92,14 @@ export function LaneSvg({ row, email, idKey, showConnector, current }: Props) {
         )}
       </g>
     </svg>
+    {tip &&
+      createPortal(
+        <div className="node-tooltip" data-testid="node-tooltip" style={{ left: tip.x, top: tip.y }}>
+          {author}
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
