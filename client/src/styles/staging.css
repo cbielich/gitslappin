@@ -399,3 +399,20 @@
   border-color: var(--text-selected);
   color: var(--text-selected);
 }
+
+/* "Switching to x…": shown while a checkout waits for its turn (other git work on the repo runs first). */
+.switching-bar {
+  position: fixed;
+  left: 50%;
+  top: 56px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  padding: 8px 18px;
+  font-weight: 600;
+  border: 1px solid var(--accent, #4aa3ff);
+  border-radius: 4px;
+  background: var(--bg-elev, #2b2f36);
+  color: var(--text, #e6e6e6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+}

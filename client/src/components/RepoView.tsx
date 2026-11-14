@@ -127,6 +127,8 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
   const [description, setDescription] = useState('');
   const [amend, setAmend] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** Branch (or short sha) a checkout is switching to, shown until it finishes: a queued switch can wait behind other git work. */
+  const [switching, setSwitching] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const working = useRef(false);
   /** V6: one key press that arrived while a change was running (S, U, Ctrl+Shift+S / U): it runs when that change is over, never in parallel. */
@@ -578,6 +580,8 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
 
   const doCheckout = useCallback(
     (body: { kind: 'local' | 'remote'; name: string } | { kind: 'commit'; sha: string }) => {
+      if (working.current) return; // a switch (or other change) is already queued; the indicator below says so
+      setSwitching(body.kind === 'commit' ? body.sha.slice(0, 7) : body.name);
       void mutate('Checkout Failed', async () => {
         try {
           await api.checkout(repo.id, body);
@@ -590,7 +594,7 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
           throw e;
         }
         refresh();
-      });
+      }).finally(() => setSwitching(null));
     },
     [mutate, repo.id, refresh],
   );
@@ -1896,6 +1900,11 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
           <button className="confirm-cancel" data-testid="skip-confirm-cancel" onClick={() => setSkipConfirm(false)}>
             Cancel
           </button>
+        </div>
+      )}
+      {switching && (
+        <div className="switching-bar" data-testid="switching" role="status">
+          Switching to {switching}…
         </div>
       )}
       <Toasts toasts={toasts} onDismiss={dismissToast} />

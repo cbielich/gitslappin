@@ -83,7 +83,10 @@ const CommitRow = memo(function CommitRow({ row, commit, index, top, selected, m
       data-testid="ref-pill"
       data-name={p.label}
       title={p.title}
-      onDoubleClick={() => onPillOpen(p)}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onPillOpen(p);
+      }}
       {...((p.localName ?? p.remoteNames[0]) ? branchDndProps(
         { name: (p.localName ?? p.remoteNames[0]) as string, kind: p.localName ? 'local' : 'remote' },
         onBranchDrop,
@@ -128,7 +131,12 @@ const CommitRow = memo(function CommitRow({ row, commit, index, top, selected, m
         onMenu(e.clientX, e.clientY, { target: row.stash ? 'stash' : 'row', sha: commit.sha });
       }}
     >
-      <div className={`cell cell-ref${creating ? ' creating' : ''}${expanded ? ' expanded' : ''}`} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <div className={`cell cell-ref${creating ? ' creating' : ''}${expanded ? ' expanded' : ''}`} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+        onDoubleClick={() => {
+          // Double-click anywhere in the Branch / Tag cell checks out the first branch on the row (pills handle their own).
+          const target = pills.find((p) => p.localName || p.remoteNames.length > 0);
+          if (!creating && target) onPillOpen(target);
+        }}>
         {creating && <BranchInput value={creatingName} onChange={onCreateName} onSubmit={onCreateSubmit} onCancel={onCreateCancel} />}
         {!creating && (expanded ? <span className="ref-pills-all">{pills.map(renderPill)}</span> : first && renderPill(first))}
         {!creating && !expanded && extra.length > 0 && (

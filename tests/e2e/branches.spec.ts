@@ -71,6 +71,32 @@ async function openRepoApi(request: APIRequestContext, path: string): Promise<st
   return ((await res.json()) as { id: string }).id;
 }
 
+test('double-click on the empty part of the Branch / Tag cell checks out that row\'s branch', async ({ page }) => {
+  const fx = createBranchRepo();
+  await openGraph(page, fx.repo);
+  const cell = page.getByTestId('commit-row').filter({ has: pill(page, 'dup') }).locator('.cell-ref');
+  const box = (await cell.boundingBox())!;
+  await page.mouse.dblclick(box.x + box.width - 3, box.y + box.height / 2);
+  await expect(page.getByTestId('toolbar-branch')).toContainText('dup');
+  expect(currentBranch(fx.repo)).toBe('dup');
+});
+
+test('a slow checkout shows "Switching to …" until it finishes', async ({ page }) => {
+  const fx = createBranchRepo();
+  await openGraph(page, fx.repo);
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  await page.route('**/checkout', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await pill(page, 'dup').dblclick();
+  await expect(page.getByTestId('switching')).toHaveText('Switching to dup…');
+  release();
+  await expect(page.getByTestId('switching')).toHaveCount(0);
+  await expect(page.getByTestId('toolbar-branch')).toContainText('dup');
+});
+
 test.describe('checkout by double-click', () => {
   test('sidebar LOCAL item double-click checks out the branch', async ({ page }) => {
     const fx = createBranchRepo();
