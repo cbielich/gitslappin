@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 interface Props {
   message: string;
@@ -11,14 +11,17 @@ interface Props {
   detail?: string;
   /** The action is running: the bar stays up and its buttons wait. */
   busy?: boolean;
-  onOk: () => void;
+  /** An unticked checkbox with this label (e.g. "Don't ask again") next to the buttons; onOk gets its state. */
+  checkboxLabel?: string;
+  onOk: (checked: boolean) => void;
   onCancel: () => void;
 }
 
 const DETAIL_LIMIT = 600;
 
 /** The slate confirm bar across the top (shared by delete stash, apply onto a dirty tree, partial staging and the phase 11 actions). Escape cancels. */
-export function ConfirmBar({ message, okLabel, cancelLabel = 'Cancel', kind, detail, busy = false, onOk, onCancel }: Props) {
+export function ConfirmBar({ message, okLabel, cancelLabel = 'Cancel', kind, detail, busy = false, checkboxLabel, onOk, onCancel }: Props) {
+  const [checked, setChecked] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !busy && onCancel();
     window.addEventListener('keydown', onKey);
@@ -34,7 +37,13 @@ export function ConfirmBar({ message, okLabel, cancelLabel = 'Cancel', kind, det
           </span>
         )}
       </span>
-      <button className="confirm-ok" data-testid="confirm-ok" disabled={busy} onClick={onOk}>
+      {checkboxLabel && (
+        <label className="confirm-check">
+          <input type="checkbox" data-testid="confirm-checkbox" checked={checked} disabled={busy} onChange={(e) => setChecked(e.target.checked)} />
+          {checkboxLabel}
+        </label>
+      )}
+      <button className="confirm-ok" data-testid="confirm-ok" disabled={busy} onClick={() => onOk(checked)}>
         {okLabel}
       </button>
       <button className="confirm-cancel" data-testid="confirm-cancel" disabled={busy} onClick={onCancel}>

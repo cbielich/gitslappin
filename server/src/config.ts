@@ -18,6 +18,8 @@ export interface Config {
   pathMap: PathPair[];
   /** Live auto-refresh: `events` (file watcher, default) or `poll` (timer; for Docker bind mounts that send no file events). */
   watch: 'events' | 'poll';
+  /** GITSLAPPIN_EDITOR, trimmed: '' (or `code`) = VS Code from its standard install folders, else an absolute path to an .exe. */
+  editor: string;
 }
 
 /** The token text in `.env.example`. It is refused as a token under bind 0.0.0.0. */
@@ -58,6 +60,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     repoRoots,
     pathMap: parsePathMap(env.GITSLAPPIN_PATH_MAP),
     watch,
+    editor: (env.GITSLAPPIN_EDITOR ?? '').trim(),
   };
 }
 

@@ -34,6 +34,8 @@ interface Props {
   /** V5b: open File History (File View, blame off) or File History with blame on. Left out where the buttons must not show. */
   onHistory?: () => void;
   onBlame?: () => void;
+  /** "Edit in Working Directory": opens the in-app editor on the working copy. Only given for commit diffs. */
+  onEditWorkdir?: () => void;
   /** Inside File History: no path header and no File View / Diff View switch (File History has its own). */
   embedded?: boolean;
 }
@@ -42,7 +44,7 @@ type ContentsState = { state: 'loading' } | { state: 'ready'; contents: DiffCont
 
 const errMessage = (e: unknown, fallback: string): string => (e instanceof Error ? e.message : fallback);
 
-export function DiffView({ repoId, target, onClose, refreshKey = 0, onAction, onDiscardHunk, busy = false, onSettled, onHistory, onBlame, embedded = false }: Props) {
+export function DiffView({ repoId, target, onClose, refreshKey = 0, onAction, onDiscardHunk, busy = false, onSettled, onHistory, onBlame, onEditWorkdir, embedded = false }: Props) {
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [full, setFull] = useState(false);
@@ -253,7 +255,13 @@ export function DiffView({ repoId, target, onClose, refreshKey = 0, onAction, on
       </div>
       )}
       <div className="diff-toolbar">
-        <div className="diff-toolbar-left" />
+        <div className="diff-toolbar-left">
+          {!embedded && onEditWorkdir && (
+            <button className="diff-tool diff-tool-text" data-testid="diff-edit-workdir" onClick={onEditWorkdir}>
+              Edit in Working Directory
+            </button>
+          )}
+        </div>
         <div className="diff-toolbar-center">
           {(target.source === 'staged' || target.source === 'unstaged') && (
             <span className="diff-badge" data-testid="diff-badge">

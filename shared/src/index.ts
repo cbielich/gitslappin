@@ -51,4 +51,5 @@ export { buildPatch } from './patch';
 export { wordDiff, wordDiffHunk, type Seg } from './wordDiff';
 export * from './merge3';
 export * from './mergeTool';
+export * from './fileActions';
 export * from './rewrite';

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
-import { branchNameProblem, isConsecutiveChain, type GraphVisibility, type IntegrateResponse, type PullMode, type RebasePlan, type RebaseStep, type RefsInfo, type RepoInfo, type StashResponse, type StatusSummary, type UndoStateInfo, type WipFile } from '@gitslappin/shared';
+import { branchNameProblem, isConsecutiveChain, type FileActionResult, type GraphVisibility, type IntegrateResponse, type PullMode, type RebasePlan, type RebaseStep, type RefsInfo, type RepoInfo, type StashResponse, type StatusSummary, type UndoStateInfo, type WipFile } from '@gitslappin/shared';
 import { ApiRequestError, api, type DestructiveResponse } from '../api';
 import { useGraph } from '../hooks/useGraph';
 import { useRepoEvents, type RepoEventType } from '../hooks/useRepoEvents';
 import { UNSTAGE_CHUNK, chunk } from '../lib/chunk';
 import { diffTargetKey, type DiffTarget } from '../lib/diffTarget';
+import { displayPath } from '../lib/displayPath';
+import { absoluteFilePath, type FileMenuActions } from '../lib/fileMenu';
 import { onAutoFetchMinutes } from '../lib/autoFetchPref';
 import { setTerminalSlot } from '../lib/terminalSlot';
 import { headLine } from '../lib/headLine';
@@ -14,6 +16,7 @@ import { CompareDetails } from './CompareDetails';
 import { CommitDetails, type OpenFileHook } from './DetailsPanel';
 import { displayStatus } from './FileList';
 import { DiffView, type DiffAction } from './diff/DiffView';
+import { FileEditor } from './diff/FileEditor';
 import { FileHistoryView } from './diff/FileHistoryView';
 import { GraphSearch } from './graph/GraphSearch';
 import { GraphView, type MenuRequest, type ScrollTarget, type Selection } from './graph/GraphView';
@@ -45,6 +48,8 @@ interface Props {
   ref?: Ref<RepoViewHandle>;
   /** What the toolbar needs for Pull and Push (null when this view goes away). */
   onRemote?: (s: RemoteToolbarState | null) => void;
+  /** The server says it runs on the user's own desktop (GET /api/ping): only then the file menu offers the items that start programs. */
+  desktop?: boolean;
 }
 
 export interface RepoViewHandle {
@@ -95,7 +100,7 @@ function settleTarget(s: StatusSummary, t: DiffTarget, jump: boolean): DiffTarge
 /** Toast title for the backup the merge tool stores before it writes (invented wording, no GitKraken key). */
 const MERGE_BACKUP_TITLE = 'Backup of the previous file';
 
-export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props) {
+export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote, desktop = false }: Props) {
   const graph = useGraph(repo.id);
   const [refs, setRefs] = useState<RefsInfo | null>(null);
   const [wip, setWip] = useState<StatusSummary | null>(null);
@@ -120,6 +125,9 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
   const [diffTarget, setDiffTarget] = useState<DiffTarget | null>(null);
   /** V5b: File History open over the diff pane (the diff target stays set so the X comes back to it). */
   const [fileHistory, setFileHistory] = useState<{ sha: string; path: string; blame: boolean } | null>(null);
+  /** The file open in the in-app editor (commit file menu "Edit file" / "Edit in Working Directory"). It takes the diff slot and stays while it has unsaved typing. */
+  const [editPath, setEditPath] = useState<string | null>(null);
+  const editDirty = useRef(false);
   const [diffNonce, setDiffNonce] = useState(0);
   /** The conflicted file open in the 3-pane merge tool (it takes over the centre and right area). */
   const [mergePath, setMergePath] = useState<string | null>(null);
@@ -325,7 +333,10 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
     setScrollTarget({ sha: 'wip', nonce: ++nonce.current });
   }, []);
 
-  const onOpenFile: OpenFileHook = useCallback((t) => setDiffTarget(t), []);
+  const onOpenFile: OpenFileHook = useCallback((t) => {
+    if (!editDirty.current) setEditPath(null); // opening another file leaves the editor, unless it has unsaved typing
+    setDiffTarget(t);
+  }, []);
   const closeDiff = useCallback(() => {
     setFileHistory(null);
     setDiffTarget(null);
@@ -822,7 +833,8 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
   const STASH_CREATE_ERROR = 'Error Creating Stash'; // Error-CreatingStashError
   const STASH_APPLY_ERROR = 'Error Applying Stash'; // Error-ApplyingStashError
   // `keepOpen` (phase 11): `run` returns a promise and the bar stays up, buttons waiting, until the action is over.
-  const [confirm, setConfirm] = useState<{ message: string; okLabel: string; run: () => void | Promise<unknown>; cancel?: () => void; kind?: string; detail?: string; keepOpen?: boolean } | null>(null);
+  // `checkbox` (commit file menu): an unticked checkbox with that label; `run` gets its state.
+  const [confirm, setConfirm] = useState<{ message: string; okLabel: string; run: (checked?: boolean) => void | Promise<unknown>; cancel?: () => void; kind?: string; detail?: string; keepOpen?: boolean; checkbox?: string } | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const stashEntry = (sha: string) => refsRef.current?.stashes.find((s) => s.sha === sha);
 
@@ -939,6 +951,86 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
     if (paths.length === 0) return;
     setConfirm({ kind: 'discard-all', message: D.resetAll, okLabel: 'Reset All', run: () => runDiscard(paths), keepOpen: true }); // ResetAllButtonLabel
   };
+  // --- Commit file menu (right-click on a file of a commit) ---
+  /** File History or File Blame of a file as of that commit (same trick as the palette: the history is kept across the diff target change). */
+  const openHistory = (sha: string, path: string, blame: boolean) => {
+    if (!editDirty.current) setEditPath(null);
+    const hist = { sha, path, blame };
+    const target: DiffTarget = { source: 'commit', sha, path, status: null };
+    // Only a changed diff key runs the effect that consumes `pendingHistory`; with the same key it would stay set and show up later.
+    if (diffTargetKey(target) !== diffKey) pendingHistory.current = hist;
+    setFileHistory(hist);
+    setDiffTarget(target);
+  };
+  const errText = (e: unknown, fallback: string): string => (e instanceof Error && e.message ? e.message : fallback);
+  /** A success toast. When the change could not be recorded for Undo, the backup shas show and the toast stays until dismissed. */
+  const savedToast = (title: string, detail: string, res: FileActionResult) => {
+    const sticky = res.undoable === false && res.changed !== false;
+    if (!sticky) return addToast(title, detail, true);
+    const shas = [res.backup && `Previous version saved as ${res.backup}`, res.indexBackup && `Previous index saved as ${res.indexBackup}`, res.trashPath && `Moved to ${displayPath(res.trashPath)}`];
+    addToast(title, [detail, ...shas].filter(Boolean).join('\n'), false);
+  };
+  const askDeleteFile = (path: string) =>
+    setConfirm({
+      kind: 'delete-file',
+      message: `Are you sure you want to delete '${displayPath(path)}'?`, // File-ConfirmDeletePath
+      okLabel: 'Delete', // DeleteButtonLabel
+      run: () =>
+        void mutate(`Delete file at path failed: ${displayPath(path)}.`, async () => {
+          // Error-DeleteFileFailed
+          const res = await api.fileDelete(repo.id, path);
+          savedToast(`Deleted '${displayPath(path)}'`, '', res); // File-Deleted
+          afterDestructive();
+        }),
+    });
+  /** Restore: asks only when the file has a change in the working folder (or the list is cut) and the pref allows it. */
+  const askRestoreFile = async (sha: string, path: string) => {
+    const w = await loadStatus();
+    let ask = !w || !!w.truncated || w.files.some((f) => f.path === path || f.oldPath === path);
+    if (ask) ask = ((await api.getPrefs().catch(() => null))?.promptBeforeRestoreFile ?? true) !== false;
+    // A change that is still running (the previous restore refreshing) is waited for, not skipped silently.
+    const run = (dontAsk: boolean) =>
+      whenIdle(() => void mutate('Failed to restore file', async () => {
+        // Error-RestoreFileFailed
+        if (dontAsk) await api.putPrefs({ promptBeforeRestoreFile: false }).catch(() => undefined);
+        const res = await api.fileRestore(repo.id, { path, sha });
+        savedToast('File Restored Successfully', `Successfully restored ${displayPath(path)}`, res); // Notification-RestoreFileSuccessful
+        refresh();
+        await afterChange(false);
+        viewChanges();
+      }));
+    if (!ask) return run(false);
+    setConfirm({
+      kind: 'restore-file',
+      message: `Restoring ${displayPath(path)} will overwrite your local changes. Are you sure you want to continue?`, // ConfirmationMessage-RestoreFileWillOverwrite
+      okLabel: 'Submit',
+      checkbox: "Don't ask again",
+      run: (checked) => run(checked === true),
+    });
+  };
+  /** "Edit file" and "Edit in Working Directory": the in-app editor takes the diff slot (an editor with unsaved typing is kept as it is). */
+  const editFile = (path: string): void => {
+    if (!editDirty.current) setEditPath(path);
+  };
+  const onEditorSaved = async (res: FileActionResult) => {
+    const path = editPath ?? '';
+    setEditPath(null);
+    editDirty.current = false;
+    if (!res.undoable) savedToast(`Saved '${displayPath(path)}'`, '', res); // only shown when Undo could not be recorded
+    refresh();
+    await afterChange(false);
+  };
+  const fileMenuActions = (sha: string): FileMenuActions => ({
+    history: (path, blame) => openHistory(sha, path, blame),
+    // The diff tool stays open for as long as the user keeps it: the request is not awaited, its failure shows when it settles.
+    difftool: (file) => void api.fileDifftool(repo.id, { sha, ...file }).catch((e: unknown) => addToast(errText(e, 'Failed to open diff tool'))),
+    open: (path, how) => void api.fileOpen(repo.id, { path, how }).catch((e: unknown) => addToast(errText(e, `Failed to open ${displayPath(path)}: unknown error`))),
+    copyPath: (path) => copy(desktop ? absoluteFilePath(repo.root, path) : path),
+    edit: editFile,
+    remove: askDeleteFile,
+    restore: (path) => void askRestoreFile(sha, path),
+  });
+
   /** V3 Ignore (the confirm bar, when a tracked file is involved, lives in StagingPanel). Error-IgnoreFilesFailed. */
   const ignoreFiles = (paths: string[], mode: 'file' | 'ext' | 'folder', untrack: boolean) =>
     mutate('Ignoring files failed', async () => {
@@ -1738,7 +1830,7 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
       <section className="center-panel" data-testid="center-panel" tabIndex={-1} style={mergePath ? { display: 'none' } : undefined}>
         {searchOpen && !diffTarget && <GraphSearch repoId={repo.id} focusNonce={focusNonce} onJump={(sha) => void jump(sha)} onMatches={onMatches} onClose={closeSearch} />}
         {/* Stays mounted while a diff is open so scroll position and loaded pages survive. */}
-        <div className={`graph-wrap${diffTarget || rebasePlan ? ' hidden' : ''}`}>
+        <div className={`graph-wrap${diffTarget || rebasePlan || editPath ? ' hidden' : ''}`}>
         <GraphView
           rows={graph.rows}
           commits={graph.commits}
@@ -1766,9 +1858,21 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
           onCreateCancel={onCreateCancel}
         />
         </div>
-        {rebasePlan && !diffTarget && <RebasePanel key={rebasePlan.head + rebasePlan.upstream} repoId={repo.id} plan={rebasePlan} busy={busy} onStart={(steps) => startRebase(rebasePlan, steps)} onCancel={() => setRebasePlan(null)} />}
-        {diffTarget && fileHistory && <FileHistoryView key={`${fileHistory.sha}|${fileHistory.path}|${fileHistory.blame ? 1 : 0}`} repoId={repo.id} sha={fileHistory.sha} path={fileHistory.path} blame={fileHistory.blame} onClose={() => setFileHistory(null)} />}
-        {diffTarget && !fileHistory && (
+        {editPath && (
+          <FileEditor
+            key={editPath}
+            repoId={repo.id}
+            path={editPath}
+            onClose={() => setEditPath(null)}
+            onSaved={onEditorSaved}
+            onDirty={(d) => {
+              editDirty.current = d;
+            }}
+          />
+        )}
+        {rebasePlan && !diffTarget && !editPath && <RebasePanel key={rebasePlan.head + rebasePlan.upstream} repoId={repo.id} plan={rebasePlan} busy={busy} onStart={(steps) => startRebase(rebasePlan, steps)} onCancel={() => setRebasePlan(null)} />}
+        {diffTarget && fileHistory && !editPath && <FileHistoryView key={`${fileHistory.sha}|${fileHistory.path}|${fileHistory.blame ? 1 : 0}`} repoId={repo.id} sha={fileHistory.sha} path={fileHistory.path} blame={fileHistory.blame} onClose={() => setFileHistory(null)} />}
+        {diffTarget && !fileHistory && !editPath && (
           <DiffView
             key={diffTargetKey(diffTarget)}
             repoId={repo.id}
@@ -1779,6 +1883,7 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
             onSettled={onDiffSettled}
             {...(diffTarget.source === 'staged' || diffTarget.source === 'unstaged' ? { onAction: onDiffAction } : {})}
             {...(diffTarget.source === 'unstaged' && !diffTarget.untracked ? { onDiscardHunk } : {})}
+            {...(diffTarget.source === 'commit' ? { onEditWorkdir: () => editFile(diffTarget.path) } : {})}
             {...(historyShaFor(diffTarget) ? { onHistory: () => setFileHistory({ sha: historyShaFor(diffTarget)!, path: diffTarget.path, blame: false }), onBlame: () => setFileHistory({ sha: historyShaFor(diffTarget)!, path: diffTarget.path, blame: true }) } : {})}
           />
         )}
@@ -1810,6 +1915,7 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
             onViewChanges={viewChanges}
             onOpenFile={onOpenFile}
             onJump={(sha) => void jump(sha)}
+            fileMenu={{ desktop, actions: fileMenuActions(selected.sha) }}
             {...rewordProp(selected.sha)}
           />
         )}
@@ -1870,17 +1976,18 @@ export function RepoView({ repo, onBranchChange, onRefs, ref, onRemote }: Props)
           okLabel={confirm.okLabel}
           {...(confirm.kind ? { kind: confirm.kind } : {})}
           {...(confirm.detail ? { detail: confirm.detail } : {})}
+          {...(confirm.checkbox ? { checkboxLabel: confirm.checkbox } : {})}
           busy={confirmBusy}
-          onOk={() => {
+          onOk={(checked) => {
             const cur = confirm;
             if (!cur.keepOpen) {
               setConfirm(null);
-              void cur.run();
+              void cur.run(checked);
               return;
             }
             // The bar stays until the action is over; a second question that the action raised itself (git refused -d) is kept.
             setConfirmBusy(true);
-            void Promise.resolve(cur.run()).finally(() => {
+            void Promise.resolve(cur.run(checked)).finally(() => {
               setConfirmBusy(false);
               setConfirm((c) => (c === cur ? null : c));
             });

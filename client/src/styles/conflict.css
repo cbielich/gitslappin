@@ -160,6 +160,14 @@
   overflow-wrap: anywhere;
 }
 
+.confirm-bar .confirm-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-2);
+  cursor: pointer;
+}
+
 .confirm-bar .confirm-ok,
 .confirm-bar .confirm-cancel {
   padding: 2px 10px;

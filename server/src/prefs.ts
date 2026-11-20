@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { Prefs, PullMode, TerminalCursor, TerminalShell, Theme } from '@gitslappin/shared';
 
 export const PREFS_FILE = 'prefs.json';
-export const DEFAULT_PREFS: Prefs = { pullMode: 'merge', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' };
+export const DEFAULT_PREFS: Prefs = { pullMode: 'merge', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block', promptBeforeRestoreFile: true };
 
 const PULL_MODES: readonly PullMode[] = ['merge', 'ff-only', 'rebase'];
 const isPullMode = (v: unknown): v is PullMode => typeof v === 'string' && (PULL_MODES as readonly string[]).includes(v);
@@ -36,6 +36,7 @@ export function readPrefs(dataDir: string): Prefs {
         terminalShell: isTermShell(o.terminalShell) ? o.terminalShell : DEFAULT_PREFS.terminalShell,
         terminalFontSize: isTermFont(o.terminalFontSize) ? o.terminalFontSize : DEFAULT_PREFS.terminalFontSize,
         terminalCursor: isTermCursor(o.terminalCursor) ? o.terminalCursor : DEFAULT_PREFS.terminalCursor,
+        promptBeforeRestoreFile: typeof o.promptBeforeRestoreFile === 'boolean' ? o.promptBeforeRestoreFile : DEFAULT_PREFS.promptBeforeRestoreFile,
       };
     }
   } catch {
@@ -76,6 +77,10 @@ export function parsePrefsPatch(body: unknown): { ok: true; patch: Partial<Prefs
   if (Object.prototype.hasOwnProperty.call(src, 'terminalCursor')) {
     if (!isTermCursor(src.terminalCursor)) return { ok: false, error: 'Invalid cursor style.' };
     patch.terminalCursor = src.terminalCursor;
+  }
+  if (Object.prototype.hasOwnProperty.call(src, 'promptBeforeRestoreFile')) {
+    if (typeof src.promptBeforeRestoreFile !== 'boolean') return { ok: false, error: 'Invalid setting.' };
+    patch.promptBeforeRestoreFile = src.promptBeforeRestoreFile;
   }
   if (Object.keys(patch).length === 0) return { ok: false, error: 'Nothing to save.' };
   return { ok: true, patch };

@@ -21,7 +21,7 @@ const stored = (dir: string) => JSON.parse(readFileSync(file(dir), 'utf8')) as R
 
 describe('autoFetchMinutes default', () => {
   it('is 1 in DEFAULT_PREFS and when there is no file', () => {
-    expect(DEFAULT_PREFS).toEqual({ pullMode: 'merge', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
+    expect(DEFAULT_PREFS).toEqual({ pullMode: 'merge', theme: 'dark', zoom: 1, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block', promptBeforeRestoreFile: true });
     expect(readPrefs(freshDataDir())).toEqual(DEFAULT_PREFS);
   });
 
@@ -37,14 +37,14 @@ describe('autoFetchMinutes default', () => {
     for (const bad of [61, -1, 1.5, '1', null, 1e9, [5]]) {
       const dir = freshDataDir();
       writeFileSync(file(dir), JSON.stringify({ pullMode: 'rebase', theme: 'light', zoom: 1.2, autoFetchMinutes: bad }));
-      expect(readPrefs(dir), JSON.stringify(bad)).toEqual({ pullMode: 'rebase', theme: 'light', zoom: 1.2, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
+      expect(readPrefs(dir), JSON.stringify(bad)).toEqual({ pullMode: 'rebase', theme: 'light', zoom: 1.2, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block', promptBeforeRestoreFile: true });
     }
   });
 
   it('an older prefs.json without the key reads as 1 and keeps its other values', () => {
     const dir = freshDataDir();
     writeFileSync(file(dir), JSON.stringify({ pullMode: 'ff-only', theme: 'light', zoom: 0.9 }));
-    expect(readPrefs(dir)).toEqual({ pullMode: 'ff-only', theme: 'light', zoom: 0.9, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' });
+    expect(readPrefs(dir)).toEqual({ pullMode: 'ff-only', theme: 'light', zoom: 0.9, autoFetchMinutes: 1, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block', promptBeforeRestoreFile: true });
   });
 
   it('a stored valid value is read back (0 and 60 included)', () => {
@@ -88,8 +88,8 @@ describe('autoFetchMinutes merge and storage', () => {
     const dir = freshDataDir();
     updatePrefs(dir, { pullMode: 'rebase', theme: 'light', zoom: 1.3 });
     const res = updatePrefs(dir, { autoFetchMinutes: 0 });
-    expect(res).toEqual({ ok: true, prefs: { pullMode: 'rebase', theme: 'light', zoom: 1.3, autoFetchMinutes: 0, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' } });
-    expect(Object.keys(stored(dir)).sort()).toEqual(['autoFetchMinutes', 'pullMode', 'terminalCursor', 'terminalFontSize', 'terminalShell', 'theme', 'zoom']);
+    expect(res).toEqual({ ok: true, prefs: { pullMode: 'rebase', theme: 'light', zoom: 1.3, autoFetchMinutes: 0, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block', promptBeforeRestoreFile: true } });
+    expect(Object.keys(stored(dir)).sort()).toEqual(['autoFetchMinutes', 'promptBeforeRestoreFile', 'pullMode', 'terminalCursor', 'terminalFontSize', 'terminalShell', 'theme', 'zoom']);
     expect(stored(dir).autoFetchMinutes).toBe(0); // 0 is stored as 0, not turned into the default
     expect(readPrefs(dir).autoFetchMinutes).toBe(0);
   });
@@ -97,7 +97,7 @@ describe('autoFetchMinutes merge and storage', () => {
   it('a theme-only update keeps a saved autoFetchMinutes of 60', () => {
     const dir = freshDataDir();
     updatePrefs(dir, { autoFetchMinutes: 60 });
-    expect(updatePrefs(dir, { theme: 'light' })).toEqual({ ok: true, prefs: { pullMode: 'merge', theme: 'light', zoom: 1, autoFetchMinutes: 60, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block' } });
+    expect(updatePrefs(dir, { theme: 'light' })).toEqual({ ok: true, prefs: { pullMode: 'merge', theme: 'light', zoom: 1, autoFetchMinutes: 60, terminalShell: 'powershell', terminalFontSize: 13, terminalCursor: 'block', promptBeforeRestoreFile: true } });
   });
 
   it('a rejected update leaves the stored file byte for byte unchanged', () => {

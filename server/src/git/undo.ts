@@ -28,7 +28,8 @@ export type UndoEntry =
   | { kind: 'checkout'; from: Head; to: Head; createdBranch?: string }
   | { kind: 'create-branch'; name: string; sha: string; from: Head; checkedOut: boolean }
   // Phase 11 (destructive.ts records these inside its own lock). None of them has a redo.
-  | { kind: 'discard'; head: string; snap: string | null; files: PinnedFile[]; indexAfter: string }
+  // `label` and `indexTree` are for the commit file menu (fileActions.ts): `indexTree` is the pinned tree the index is restored from (instead of snap^2).
+  | { kind: 'discard'; head: string; snap: string | null; files: PinnedFile[]; indexAfter: string; label?: string; indexTree?: string }
   | { kind: 'reset'; mode: 'soft' | 'mixed' | 'hard'; branch: string; prev: string; to: string; snap: string | null; files: PinnedFile[]; indexAfter: string }
   | { kind: 'delete-branch'; name: string; sha: string; config: { remote?: string; merge?: string }; remote?: { name: string; rb: string; sha: string } }
   // V2: a local tag delete. `sha` is the tag object (the commit for a lightweight tag), pinned under refs/gitslappin/undo/ before the delete.
@@ -156,7 +157,7 @@ function labelOf(e: Entry): string {
     case 'drop':
       return 'delete stash';
     case 'discard':
-      return 'discard changes';
+      return e.label ? cut(clean(e.label)) : 'discard changes';
     case 'reset':
       return `reset '${cut(clean(e.branch))}'`;
     case 'delete-branch':
@@ -433,7 +434,15 @@ async function undoDiscard(root: string, repoId: string, e: Extract<Entry, { kin
     if (now !== f.post && now !== preState(f)) return refused(`'${cut(clean(f.path))}' has changed since the changes were discarded.`);
   }
   const tracked = e.files.filter((f) => f.tracked).map((f) => f.path);
-  if (tracked.length > 0 && (!e.snap || !SHA.test(e.snap) || !(await exists(root, repoId, e.snap)))) return refused(MISSING);
+  // Where the index entries come from: a pinned index tree when the entry has one (never replaced by snap^2 when it is bad), else the snapshot's index commit.
+  let indexSource: string | null = null;
+  if (e.indexTree !== undefined) {
+    if (typeof e.indexTree !== 'string' || !SHA.test(e.indexTree) || (await run(root, repoId, ['cat-file', '-e', `${e.indexTree}^{tree}`])).code !== 0) return refused(MISSING);
+    indexSource = e.indexTree;
+  } else if (tracked.length > 0) {
+    if (!e.snap || !SHA.test(e.snap) || !(await exists(root, repoId, e.snap))) return refused(MISSING);
+    indexSource = `${e.snap}^2`;
+  }
   for (const f of e.files) {
     if (f.blob !== null && (await run(root, repoId, ['cat-file', '-e', f.blob])).code !== 0) return refused(MISSING);
   }
@@ -441,8 +450,8 @@ async function undoDiscard(root: string, repoId: string, e: Extract<Entry, { kin
     const err = await restoreFile(root, repoId, f);
     if (err) return { outcome: 'failed', error: err };
   }
-  if (tracked.length > 0) {
-    const res = await run(root, repoId, ['--literal-pathspecs', 'restore', `--source=${e.snap}^2`, '--staged', '--pathspec-from-file=-', '--pathspec-file-nul'], nulList(tracked));
+  if (tracked.length > 0 && indexSource !== null) {
+    const res = await run(root, repoId, ['--literal-pathspecs', 'restore', `--source=${indexSource}`, '--staged', '--pathspec-from-file=-', '--pathspec-file-nul'], nulList(tracked));
     if (res.code !== 0) return failed(res, 'git restore failed.');
   }
   return { outcome: 'done' };

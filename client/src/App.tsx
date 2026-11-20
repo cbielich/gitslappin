@@ -246,7 +246,7 @@ export function App() {
         {...(hasRepo && terminalOk ? { onTerminal: () => void toggleTerminal() } : {})}
       />
       <main className="main">
-        {!loaded ? null : openView ? <OpenRepoView onOpened={addTab} request={openRequest} /> : active && <RepoView key={active.id} ref={repoRef} repo={active} onBranchChange={setBranch} onRefs={setRefs} onRemote={setRemote} />}
+        {!loaded ? null : openView ? <OpenRepoView onOpened={addTab} request={openRequest} /> : active && <RepoView key={active.id} ref={repoRef} repo={active} onBranchChange={setBranch} onRefs={setRefs} onRemote={setRemote} desktop={desktop === true} />}
       </main>
       <TerminalHost ref={termRef} repoId={hasRepo ? activeId : null} openRepoIds={loaded ? tabs.map((t) => t.id) : null} theme={theme} onError={() => addToast('Failed to open repo in terminal')} onLost={() => addToast('Terminal connection lost')} />
       {logOpen && active && !openView && <ActivityLog repoId={active.id} onClose={() => setLogOpen(false)} />}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { merge3Spans, splitLines, type MergeToolInfo } from '@gitslappin/shared';
+import { merge3Spans, type MergeToolInfo } from '@gitslappin/shared';
+import { restoreEols } from '../../lib/restoreEols';
 import type { MergeOutputHandle } from './MergeOutput';
 
 /** The editors work on LF text; each line's own EOL is put back when saving (see `withEols`). */
@@ -50,19 +51,7 @@ export function buildModel(info: MergeToolInfo): MergeModel {
  * text sits in the sides with both EOLs) uses the file's majority EOL. The last line keeps having no EOL if it had none.
  */
 export function withEols(text: string, info: MergeToolInfo): string {
-  const known = new Map<string, string | null>();
-  for (const src of [info.a, info.b, info.base]) {
-    for (const line of splitLines(src ?? '')) {
-      if (!line.endsWith('\n')) continue;
-      const eol = line.endsWith('\r\n') ? '\r\n' : '\n';
-      const body = line.slice(0, line.length - eol.length);
-      if (!known.has(body)) known.set(body, eol);
-      else if (known.get(body) !== eol) known.set(body, null);
-    }
-  }
-  const majority = info.eol === 'crlf' ? '\r\n' : '\n';
-  const parts = text.split('\n');
-  return parts.map((p, i) => (i === parts.length - 1 ? p : p + (known.get(p) ?? majority))).join('');
+  return restoreEols(text, [info.a, info.b, info.base], info.eol);
 }
 
 export interface Take {

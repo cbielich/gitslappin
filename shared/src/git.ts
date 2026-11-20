@@ -249,6 +249,8 @@ export interface Prefs {
   /** In-app terminal font size, an integer 10 to 24. */
   terminalFontSize: number;
   terminalCursor: TerminalCursor;
+  /** Ask before "Restore file from this commit" overwrites local changes (a prompt only, not a safeguard: the server always pins the old bytes). */
+  promptBeforeRestoreFile: boolean;
 }
 export type TerminalShell = 'powershell' | 'bash';
 export type TerminalCursor = 'block' | 'underline' | 'bar';

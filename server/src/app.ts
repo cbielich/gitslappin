@@ -24,7 +24,8 @@ import { registerFsRoutes } from './routes/fs';
 import { registerGraphRoutes } from './routes/graph';
 import { registerIntegrateRoutes } from './routes/integrate';
 import { registerMergeToolRoutes } from './routes/mergeTool';
-import { isDesktop, registerOpenRoutes, type OpenSpawn } from './routes/open';
+import { registerFileActionRoutes } from './routes/fileActions';
+import { isDesktop, registerOpenRoutes, type DifftoolRunner, type OpenSpawn } from './routes/open';
 import { checkTerminalUpgrade, isTerminalUpgrade, registerTerminalRoutes } from './routes/terminal';
 import { createRealTerminalHub, killOnExit } from './terminal/real';
 import type { TerminalHub } from './terminal/hub';
@@ -51,7 +52,7 @@ const CSP =
 
 export async function buildApp(
   config: Config,
-  opts: { tracker?: Pick<AutoExit, 'connect'>; drives?: string[]; cloneVersionProblem?: () => Promise<string | null>; cloneImpl?: typeof cloneRepo; openSpawn?: OpenSpawn; openPlatform?: NodeJS.Platform; terminalHub?: TerminalHub } = {},
+  opts: { tracker?: Pick<AutoExit, 'connect'>; drives?: string[]; cloneVersionProblem?: () => Promise<string | null>; cloneImpl?: typeof cloneRepo; openSpawn?: OpenSpawn; openPlatform?: NodeJS.Platform; terminalHub?: TerminalHub; maxCaptureBytes?: number; difftoolRunner?: DifftoolRunner } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   setLogToken(config.token);
@@ -124,6 +125,7 @@ export async function buildApp(
   registerBranchRoutes(app, registry);
   registerIntegrateRoutes(app, registry);
   registerMergeToolRoutes(app, registry);
+  registerFileActionRoutes(app, registry, { ...(opts.maxCaptureBytes !== undefined ? { maxCaptureBytes: opts.maxCaptureBytes } : {}) });
   // The failing credential helper for auto-fetch, rewritten with fixed content on every start.
   registerRemoteRoutes(app, registry, config.dataDir, { askpass: writeAskpass(config.dataDir), roots: config.repoRoots ?? [], pathMap: config.pathMap });
   registerTagOpsRoutes(app, registry);
@@ -146,7 +148,13 @@ export async function buildApp(
     terminalHub.killAll();
   });
   const openPlatform = opts.openPlatform ?? process.platform;
-  registerOpenRoutes(app, registry, { bind: config.bind, platform: openPlatform, spawn: opts.openSpawn ?? (spawn as OpenSpawn) });
+  registerOpenRoutes(app, registry, {
+    bind: config.bind,
+    platform: openPlatform,
+    spawn: opts.openSpawn ?? (spawn as OpenSpawn),
+    editor: config.editor ?? '',
+    ...(opts.difftoolRunner ? { difftoolRunner: opts.difftoolRunner } : {}),
+  });
   registerSystemRoutes(app, opts.tracker ?? { connect: () => () => undefined }, () => isDesktop(config.bind, openPlatform), () => ({ terminal: terminalHub.available(), terminalBash: terminalHub.bashAvailable() }));
 
   if (existsSync(config.clientDist)) {

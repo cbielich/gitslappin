@@ -10,6 +10,7 @@ A local, GitKraken-style git GUI. A Node server listens on 127.0.0.1 and the UI 
 - History rewriting: Update Message, Squash, Interactive Rebase (Pick/Reword/Squash/Drop), Drop/Move commits, multi cherry-pick. A rebase is not undoable.
 - Viewing: compare commits, File History and Blame, Hide/Solo branches.
 - Drag a branch onto another for Merge, Rebase or Push; full keyboard shortcuts (Ctrl+/ lists them); command palette (Ctrl+P); working menu bar.
+- Right-click a file in a commit's file list: File History, File Blame, external diff tool, external editor, default program, Show in folder, Copy file path, Edit file (in-app editor, also via Edit in Working Directory on a commit diff), Delete file (moved to a trash folder inside .git, undoable) and Restore file from this commit. The diff tool, editor, default-program and Show in folder items are desktop only (hidden in Docker).
 - In-app terminal panel (Terminal button or Ctrl+`). Security: local only. It needs Windows, the server bound to 127.0.0.1 and a one-time ticket over a WebSocket, and it is always off in Docker.
 
 ## Requirements
@@ -65,6 +66,7 @@ Recent repos, open tabs, preferences and the single-instance lock live in `%APPD
 - `GITSLAPPIN_REPO_ROOTS` - when set, only repos under these folders (separated by `;`) can be opened
 - `GITSLAPPIN_WATCH` - `events` (default) or `poll`; how repo changes are detected for auto-refresh (Docker compose sets `poll`)
 - `GITSLAPPIN_PATH_MAP` - Docker only: `host=container` pairs (separated by `;`) used to translate Windows paths typed into Open
+- `GITSLAPPIN_EDITOR` - editor for "Open in external editor": empty or `code` = VS Code (`Code.exe` from its standard install folders), otherwise an absolute path to an `.exe` (`.cmd`/`.bat` are refused)
 
 ## Security model
 - The server binds to 127.0.0.1 only.

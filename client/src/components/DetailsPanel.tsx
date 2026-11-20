@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { ArrowDownAZ, Folder, List, ListTree, Minus, Pencil, Plus, ArrowRight } from 'lucide-react';
 import type { CommitDetail, FileStatus } from '@gitslappin/shared';
 import { api } from '../api';
 import type { DiffTarget } from '../lib/diffTarget';
 import { formatAuthored, identiconUri, shortSha } from '../lib/identicon';
 import { useListMode } from '../lib/listMode';
+import { fileMenuEntries, type FileMenuActions } from '../lib/fileMenu';
+import { ContextMenu } from './menu/ContextMenu';
 import { RewordEditor } from './RewordEditor';
 
 export type OpenFileHook = (target: DiffTarget) => void;
@@ -55,7 +57,10 @@ export function buildTree(files: ListFile[]): TreeNode {
   return root;
 }
 
-export function TreeView({ node, depth, onOpen }: { node: TreeNode; depth: number; onOpen: (f: ListFile) => void }) {
+/** Right-click on a file row: the file and where the menu opens. */
+export type FileMenuHook = (file: ListFile, x: number, y: number) => void;
+
+export function TreeView({ node, depth, onOpen, onMenu }: { node: TreeNode; depth: number; onOpen: (f: ListFile) => void; onMenu?: FileMenuHook }) {
   return (
     <>
       {[...node.dirs.values()]
@@ -65,20 +70,20 @@ export function TreeView({ node, depth, onOpen }: { node: TreeNode; depth: numbe
             <div className="tree-dir" data-testid="tree-dir" style={{ paddingLeft: 8 + depth * 14 }}>
               <Folder size={12} /> {d.name}
             </div>
-            <TreeView node={d} depth={depth + 1} onOpen={onOpen} />
+            <TreeView node={d} depth={depth + 1} onOpen={onOpen} {...(onMenu ? { onMenu } : {})} />
           </div>
         ))}
       {node.files
         .slice()
         .sort((a, b) => a.path.localeCompare(b.path))
         .map((f) => (
-          <FileRow key={f.path} file={f} onOpen={onOpen} indent={8 + depth * 14} nameOnly />
+          <FileRow key={f.path} file={f} onOpen={onOpen} indent={8 + depth * 14} nameOnly {...(onMenu ? { onMenu } : {})} />
         ))}
     </>
   );
 }
 
-export function FileRow({ file, onOpen, indent = 8, nameOnly = false }: { file: ListFile; onOpen: (f: ListFile) => void; indent?: number; nameOnly?: boolean }) {
+export function FileRow({ file, onOpen, indent = 8, nameOnly = false, onMenu }: { file: ListFile; onOpen: (f: ListFile) => void; indent?: number; nameOnly?: boolean; onMenu?: FileMenuHook }) {
   return (
     <button
       className={`file-row${file.status === null ? ' unchanged' : ''}`}
@@ -88,6 +93,14 @@ export function FileRow({ file, onOpen, indent = 8, nameOnly = false }: { file: 
       style={{ paddingLeft: indent }}
       title={file.oldPath ? `${file.oldPath} -> ${file.path}` : file.path}
       onClick={() => onOpen(file)}
+      {...(onMenu
+        ? {
+            onContextMenu: (e: MouseEvent<HTMLButtonElement>) => {
+              e.preventDefault();
+              onMenu(file, e.clientX, e.clientY);
+            },
+          }
+        : {})}
     >
       <StatusIcon status={file.status} />
       {nameOnly ? <span className="file-name">{file.path.slice(file.path.lastIndexOf('/') + 1)}</span> : <PathLabel path={file.path} />}
@@ -111,9 +124,13 @@ interface CommitProps {
   onJump: (sha: string) => void;
   /** V4: set when this commit's message may be reworded (HEAD is a branch, nothing is stopped, the commit is on its first-parent line). */
   reword?: { editing: boolean; isHead: boolean; rebuilt: number; busy: boolean; onStart: () => void; onCancel: () => void; onSave: (message: string) => void };
+  /** The right-click menu of the file rows. `desktop` is false in Docker (the OS-launch group is then left out). Without it a row has no menu. */
+  fileMenu?: { desktop: boolean; actions: FileMenuActions };
 }
 
-export function CommitDetails({ repoId, sha, wipTotal, onViewChanges, onOpenFile, onJump, reword }: CommitProps) {
+export function CommitDetails({ repoId, sha, wipTotal, onViewChanges, onOpenFile, onJump, reword, fileMenu }: CommitProps) {
+  const [menu, setMenu] = useState<{ x: number; y: number; file: ListFile } | null>(null);
+  useEffect(() => setMenu(null), [sha]);
   const [detail, setDetail] = useState<CommitDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useListMode();
@@ -160,6 +177,7 @@ export function CommitDetails({ repoId, sha, wipTotal, onViewChanges, onOpenFile
     return merged.sort((a, b) => a.path.localeCompare(b.path));
   }, [viewAll, allPaths, sorted]);
   const tree = useMemo(() => buildTree(shown), [shown]);
+  const onMenu = fileMenu ? { onMenu: (file: ListFile, x: number, y: number) => setMenu({ x, y, file }) } : {};
   const open = (f: ListFile) => {
     if (f.status === null) return; // unchanged file from "View all files": nothing to diff
     onOpenFile({ source: 'commit', sha, path: f.path, ...(f.oldPath ? { oldPath: f.oldPath } : {}), status: f.status });
@@ -244,10 +262,11 @@ export function CommitDetails({ repoId, sha, wipTotal, onViewChanges, onOpenFile
           </div>
           {viewAll && allError && <div className="details-error" data-testid="view-all-error">{allError}</div>}
           <div className="file-list" data-testid="file-list" data-mode={mode}>
-            {mode === 'path' ? shown.map((f) => <FileRow key={f.path} file={f} onOpen={open} />) : <TreeView node={tree} depth={0} onOpen={open} />}
+            {mode === 'path' ? shown.map((f) => <FileRow key={f.path} file={f} onOpen={open} {...onMenu} />) : <TreeView node={tree} depth={0} onOpen={open} {...onMenu} />}
           </div>
         </>
       )}
+      {menu && fileMenu && <ContextMenu x={menu.x} y={menu.y} entries={fileMenuEntries(menu.file, fileMenu.desktop, fileMenu.actions)} onClose={() => setMenu(null)} />}
     </div>
   );
 }
